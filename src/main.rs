@@ -1,6 +1,6 @@
 use std::cmp::Ordering;
 
-const N : usize = 4;
+const N : usize = 2;
 
 struct Xorwow {
     a:u32,
@@ -11,8 +11,15 @@ struct Xorwow {
 }
 
 impl Xorwow {
-    pub fn new()->Self {
-	Xorwow{ a:1,b:1,c:1,d:1,counter:0 }
+    pub fn new(seed:u32)->Self {
+	Xorwow{ a:seed,b:1,c:1,d:1,counter:0 }
+    }
+    pub fn reset(&mut self,seed:u32) {
+	self.a = seed;
+	self.b = 1;
+	self.c = 1;
+	self.d = 1;
+	self.counter = 0;
     }
     pub fn next(&mut self)->u32 {
 	let mut t = self.d;
@@ -25,7 +32,8 @@ impl Xorwow {
 	t ^= s ^ (s << 4);
 	self.a = t;
 	self.counter += 362437;
-	t + self.counter
+	let r = t + self.counter;
+	r
     }
 }
 
@@ -110,17 +118,18 @@ fn hd64(k1:&[u64],k2:&[u64])->u32 {
 }
 
 fn main() {
-    let mut xw = Xorwow::new();
+    let seed = 99123411;
+    let mut xw = Xorwow::new(seed);
     let mut k1 = [0_u32;4];
     let mut k2 = [0_u32;4];
 
-    k1 = [0xdeadbe55, 0x0badcafe, 0x12345678, 0x9abcdef0];
+    k1 = [0xdeadbe33, 0x0badcafe, 0x12345678, 0x9abcdef0];
 
     const B : usize = 64;
     const M : usize = N * B;
-    const K : usize = 16;
-    const Q : usize = 100000;
-    const RN : usize = 4;
+    const K : usize = 1 << 30;
+    const Q : usize = 10000;
+    const RN : usize = N;
     
     let mut x0 = 0;
     let mut y0 = 0;
@@ -128,21 +137,31 @@ fn main() {
     let mut tri1 = [0_u64;N];
     let mut tr = [0_u64;N];
     let mut tri = [0_u64;N];
-    let mut sums = Vec::new();
+    // let mut sums = Vec::new();
     //sums.resize(K,[[[[0_i64;2];2];M];M]);
-    sums.resize(K,[0_i64;2*2*RN*B*RN*B]);
+    //sums.resize(K,[0_i64;2*2*RN*B*RN*B]);
 
-    let mut v = [0.0_f64;K];
+    let mut v = Vec::new();//[0.0_f64;K];
     let mut d_hist = [0_usize;N*B];
+    let mut s = [0_i64;2*2*RN*B*RN*B];
     for k0 in 0..K {
-	let k = k0 ^ 0x5;
+	for i in 0..s.len() {
+	    s[i] = 0;
+	}
+	// xw.reset(seed);
+	//let k = (((k0 as u32) ^ k1[0]) & (K as u32 - 1)) as usize;
+	let k = (
+	    (if k0 == 0 { k1[0] } else { xw.next() }) & (K as u32 - 1)) as usize;
+	// let k = k0;
 	// println!("K {:02X}",k);
 	// let ks = [0x88,0x20,0x77,0xff,0x21,0x30,0xcc,0xa0,0x80];
 	// for k0 in 0..ks.len() {
 	// let k = ks[k0];
 	// let k = k0 ^ (k1[0] & 0xff) as usize;
 	k2[0] =
-	    (xw.next() & 0xfffffff0)
+	    // ((  (  xw.next() & 0xff000000
+	    // 	| k1[1]      & 0x00ffffff) ) &
+	    (xw.next() & !(K as u32 - 1))
 	    // | (k1[0]     & 0xfffff000)
 	    | (k as u32); // (xw.next() << 8) | (k as u32);
 	k2[1] = xw.next();
@@ -151,8 +170,8 @@ fn main() {
 	// k2[1] = k1[1];
 	// k2[2] = k1[2];
 	// k2[3] =
-	//     (xw.next() & 0xfffff000)
-	//     | (k1[3]     & 0x00000fff);
+	//       (xw.next() & 0x00000000)
+	//     | (k1[3]     & 0xffffffff);
 
 	x0 = 0;
 	y0 = 0;
@@ -160,9 +179,11 @@ fn main() {
 	d_hist[d as usize] += 1;
 	let mut std = 0;
 	for _ in 0..Q {
+	    x0 = xw.next();
+	    y0 = xw.next();
 	    let xy = (x0,y0);
 	    let ab = h(xy,k1);
-	    let _ = htr(xy,k1,&mut tr1);
+	    // let _ = htr(xy,k1,&mut tr1);
 	    // let _ = htri(ab,k1,&mut tri1);
 	    // println!("XY={:08X}{:08X} AB={:08X}{:08X}",xy.0,xy.1,ab.0,ab.1);
 	    // for r in 0..N { print!(" {:016X}",tr1[r]); } println!("");
@@ -176,7 +197,7 @@ fn main() {
 	    // s += ((tr1[r].0^tr2[r].0).count_ones() +
 	    //       (tr1[r].1^tr2[r].1).count_ones()) as u64;
 	    let mut j = 0;
-	    let s = &mut sums[k];
+	    // let s = &mut sums[k];
 	    for r1 in 0..RN {
 		let t1 = tr[r1];
 		for r2 in 0..RN {
@@ -193,7 +214,7 @@ fn main() {
 		    }
 		}
 	    }
-	    y0 = y0.wrapping_add(1);
+	    // y0 = y0.wrapping_add(1);
 	}
 	// for i1 in 0..M {
 	//     println!("{} {} {} {} {}",
@@ -204,8 +225,8 @@ fn main() {
 	// 	     sums[k][i1][i1][1][1]);
 	// }
 	let mut j = 0;
-	let s = &mut sums[k];
 	let mut se = 0.0;
+	let mut v_tot = 0.0;
 	for i1 in 0..M {
 	    for i2 in 0..M {
 		let t = s[j+0] + s[j+1] + s[j+2] + s[j+3];
@@ -221,11 +242,18 @@ fn main() {
 			e
 		    }
 		};
-		v[k] += f(0)+f(1)+f(2)+f(3);
+		let w = 1.0-(f(0)+f(1)+f(2)+f(3));
+		//if w > 0.60 {
+		{
+		    // println!("{} {} {}",i1,i2,w);
+		    v_tot += w;
+		}
 		j += 4;
 	    }
 	}
-	println!("{:02X} {:12.3} {} {:7.5}",k,v[k],if k as u32 == k1[0]&255 {"*"} else {" "},se/(4*M*M) as f64);
+	v_tot /= (M*M) as f64;
+	v.push(v_tot);
+	println!("{:02X} {:12.7e} {} {:7.5}",k,v_tot,if k as u32 == k1[0]&255 {"*"} else {" "},se/(4*M*M) as f64);
     }
     for i in 0..N*B {
 	if d_hist[i] > 0 {
