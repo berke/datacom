@@ -1,3 +1,5 @@
+use std::cmp::Ordering;
+
 const N : usize = 4;
 
 struct Xorwow {
@@ -94,13 +96,13 @@ fn main() {
     let mut k1 = [0_u32;4];
     let mut k2 = [0_u32;4];
 
-    k1 = [0xdeadbe77, 0x0badcafe, 0x12345678, 0x9abcdef0];
+    k1 = [0xdeadbe88, 0x0badcafe, 0x12345678, 0x9abcdef0];
 
     const B : usize = 64;
     const M : usize = N * B;
     const K : usize = 256;
-    const Q : usize = 1000;
-    const RN : usize = N;
+    const Q : usize = 10;
+    const RN : usize = 2;
     
     let mut x0 = 0;
     let mut y0 = 0;
@@ -113,16 +115,22 @@ fn main() {
 
     let mut v = [0.0_f64;K];
     for k in 0..K {
+    // let ks = [0x88,0x20,0x77,0xff,0x21,0x30,0xcc,0xa0,0x80];
+    // for k0 in 0..ks.len() {
+	// let k = ks[k0];
+	// let k = k0 ^ (k1[0] & 0xff) as usize;
 	k2[0] =
-	      (xw.next() & 0x00000800)
-	    | (k1[0]     & 0xfffff700)
+	      (xw.next() & 0x00000f00)
+	    | (k1[0]     & 0xfffff000)
 	    | (k as u32); // (xw.next() << 8) | (k as u32);
 	// k2[1] = xw.next();
 	// k2[2] = xw.next();
 	// k2[3] = xw.next();
 	k2[1] = k1[1];
 	k2[2] = k1[2];
-	k2[3] = k1[3];
+	k2[3] =
+	      (xw.next() & 0xff000000)
+	    | (k1[3]     & 0x00ffffff);
 
 	x0 = 0;
 	y0 = 0;
@@ -180,6 +188,29 @@ fn main() {
 		v[k] += f(0,0)+f(0,1)+f(1,0)+f(1,1);
 	    }
 	}
-	println!("{:02X} {} {}",k,v[k],if k as u32 == k1[0]&255 {"*"} else {""});
+	// println!("{:02X} {} {}",k,v[k],if k as u32 == k1[0]&255 {"*"} else {""});
+    }
+    let mut idx = (0..K).collect::<Vec<usize>>();
+    idx.sort_by(|&i, &j|
+		if v[i] < v[j] {
+		    Ordering::Less
+		} else if v[i] > v[j] {
+		    Ordering::Greater
+		} else {
+		    Ordering::Equal
+		}
+    );
+    // let mut v_min = v[0];
+    // let mut k_min = 0;
+    // for k in 1..K {
+    // 	if v[k] < v_min {
+    // 	    k_min = k;
+    // 	    v_min = v[k];
+    // 	}
+    // }
+    // println!("EST: {:02X} {}", k_min, v_min);
+    for i in 0..K.min(25) {
+	let k = idx[i];
+	println!("EST {:3} {:02X} {}", i, k, v[k]);
     }
 }
