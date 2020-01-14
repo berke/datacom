@@ -119,114 +119,107 @@ fn check_period() {
     }
 }
 
-fn make_table(xw:&mut Xorwow,t:usize,m:usize,h:u32)->Vec<(u32,u32)> {
-    let mut v = Vec::new();
-    for i in 0..m {
-        let mut k0 : u32 = xw.next() & M as u32;
-        if k0 == M as u32 {
-            k0 = 0;
-        }
-        let mut k = k0;
-        for j in 0..t {
-            k = f0(k) ^ h;
-        }
-        v.push((k0,k));
-    }
-    v
+struct Table {
+    t:usize,
+    v:Vec<(u32,u32)>
 }
 
-struct Table {
-    vs:Vec<Vec<(u32,u32)>>,
-    hs:Vec<u32>
-}
+// const TARGET : u32 = 210335835;
+const TARGET : u32 = 123456789;
 
 impl Table {
     fn new(m:usize)->Self {
         let mut xw = Xorwow::new(1234567);
         let t = ((M as usize / m) as f64).sqrt().floor() as usize;
-        // let t = ((100000 as usize / m) as f64).sqrt().floor() as usize;
+	let t = t * t;
         println!("M={} m={} t={}",M,m,t);
-        let mut vs = Vec::new();
-        let mut hs = Vec::new();
-        for k in 0..t {
-            println!("k={}/{}",k,t);
-            let h = k as u32;
-            let mut v = make_table(&mut xw,t,m,h);
-            v.sort_by(|(xa,ya),(xb,yb)| xa.cmp(xb));
-            vs.push(v);
-            hs.push(h);
-        }
+	let mut v = Self::fill(&mut xw,t,m);
+	v.sort_by(|(xa,ya),(xb,yb)| ya.cmp(yb));
         Table{
-            vs,
-            hs
+	    t,
+            v
         }
+    }
+
+    fn fill(xw:&mut Xorwow,t:usize,m:usize)->Vec<(u32,u32)> {
+	let mut v = Vec::new();
+	let mut found = false;
+	for i in 0..m {
+	    if i & 0xff == 0 {
+		println!("{}/{}",i,m);
+	    }
+	    let mut k0 : u32 = xw.next() & M as u32;
+	    if k0 == M as u32 {
+		k0 = 0;
+	    }
+	    let mut k = k0;
+	    for j in 0..t {
+		k = f0(k);
+		if k == TARGET && !found {
+		    found = true;
+		    println!("FOUND {} {} i={} j={}",k0,k,i,j);
+		}
+	    }
+	    v.push((k0,k));
+	}
+	v
     }
 
     fn load(path:&str)->Self {
         let mut fd = std::fs::File::open(path).unwrap();
-        let mut vs = Vec::new();
-        let vs_len = readu64(&mut fd) as usize;
-        for _ in 0..vs_len {
-            let v_len = readu64(&mut fd) as usize;
-            let mut v = Vec::new();
-            for _ in 0..v_len {
-                let x = readu32(&mut fd);
-                let y = readu32(&mut fd);
-                v.push((x,y));
-            }
-            vs.push(v);
-        }
-        let mut hs = Vec::new();
-        let hs_len = readu64(&mut fd) as usize;
-        for _ in 0..hs_len {
-            let h = readu32(&mut fd);
-            hs.push(h);
-        }
+        let t = readu64(&mut fd) as usize;
+        let m = readu64(&mut fd) as usize;
+        let mut v = Vec::new();
+	let mut y_last = 0;
+        for i in 0..m {
+	    let x = readu32(&mut fd);
+	    let y = readu32(&mut fd);
+	    if y < y_last {
+		panic!("Incorrectly ordered table: y[{}]={} y[{}]={}",i-1,y_last,i,y);
+	    }
+	    v.push((x,y));
+	    y_last = y;
+	}
         Table{
-            vs,
-            hs
+            t,
+	    v
         }
     }
 
     fn save(&self,path:&str) {
         let mut fd = std::fs::File::create(path).unwrap();
-        writeu64(&mut fd,self.vs.len() as u64);
-        for v in self.vs.iter() {
-            writeu64(&mut fd,v.len() as u64);
-            for &(x,y) in v.iter() {
-                writeu32(&mut fd,x);
-                writeu32(&mut fd,y);
-            }
-        }
-        writeu64(&mut fd,self.hs.len() as u64);
-        for &h in self.hs.iter() {
-            writeu32(&mut fd,h);
-        }
+        writeu64(&mut fd,self.t as u64);
+        writeu64(&mut fd,self.v.len() as u64);
+	for &(x,y) in self.v.iter() {
+	    writeu32(&mut fd,x);
+	    writeu32(&mut fd,y);
+	}
     }
 
     fn search(&self,y:u32)->Option<u32> {
-        let n = self.hs.len();
-        let mut hys = Vec::new();
-        for t in 0..n {
-            hys.push(self.hs[t] ^ y);
-        }
-        loop {
-            for t in 0..n {
-                let h = self.hs[t];
-                let hy = hys[t];
-                let v = &self.vs[t];
-                match v.binary_search_by(|&(xi,yi)| yi.cmp(&hy)) {
-                    Err(_) => (),
-                    Ok(i) => {
-                        println!("Found in table {}, index {}!",t,i);
-                        println!("{}",v[i].0);
-                        return Some(i as u32);
-                    }
-                }
-                hys[t] = f0(hy) ^ h;
-            }
-        }
-        None
+	let mut y0 = y;
+	for t in 0..self.t*self.t {
+	    // println!("t={} y0={}",t,y0);
+	    let v = &self.v;
+	    match v.binary_search_by(|xy| xy.1.cmp(&y0)) {
+		Err(_) => (),
+		Ok(i) => {
+		    let mut xi = v[i].0;
+		    println!("Found {}=f^{}({}) in table {}, index {} ({:?})!",y0,self.t,xi,t,i,v[i]);
+		    for _ in 0..self.t {
+			let yi = f0(xi);
+			if yi == y0 {
+			    println!("f({})={}",xi,y);
+			    return Some(xi);
+			}
+			xi = yi;
+		    }
+		    println!("No dice");
+		}
+	    }
+	    y0 = f0(y0);
+	}
+	None
     }
 }
 
@@ -254,17 +247,8 @@ fn readu64<T:Read>(fd:&mut T)->u64 {
     u64::from_le_bytes(a)
 }
 
-// fn search() {
-
-//     let c = 123456789_u32;
-
-//     for k in 0..t {
-//     }
-// }
-
-//     let m = 10000 as usize;
-
 fn main() {
+    let args = std::env::args().skip(1).map(|x| x.parse::<u32>().unwrap()).collect::<Vec<u32>>();
     let path = "rainbow.dat";
     let tbl =
         if std::path::Path::new(path).exists() {
@@ -272,10 +256,12 @@ fn main() {
             Table::load(path)
         } else {
             println!("Generating new table");
-            let tbl = Table::new(100);
+            let tbl = Table::new(200000);
             tbl.save(path);
             tbl
         };
     println!("Searching");
-    let res = tbl.search(123456);
+    for target in args {
+	let res = tbl.search(target);
+    }
 }
