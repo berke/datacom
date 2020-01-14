@@ -50,7 +50,8 @@ fn jn(x:u32,y:u32)->u64 {
     ((x as u64) << 32) | (y as u64)
 }
 
-const M : u64 = 0x7fffffff;
+// const M : u64 = 0x7fffffff;
+const M : u64 = 265371653;
 const E : u64 = 3;
 
 fn tbl()->[u32;31] {
@@ -129,7 +130,7 @@ fn make_table(xw:&mut Xorwow,t:usize,m:usize,h:u32)->Vec<(u32,u32)> {
         for j in 0..t {
             k = f0(k) ^ h;
         }
-        v.push((k,k0));
+        v.push((k0,k));
     }
     v
 }
@@ -142,8 +143,8 @@ struct Table {
 impl Table {
     fn new(m:usize)->Self {
         let mut xw = Xorwow::new(1234567);
-        //let t = ((M as usize / m) as f64).sqrt().floor() as usize;
-        let t = ((100000 as usize / m) as f64).sqrt().floor() as usize;
+        let t = ((M as usize / m) as f64).sqrt().floor() as usize;
+        // let t = ((100000 as usize / m) as f64).sqrt().floor() as usize;
         println!("M={} m={} t={}",M,m,t);
         let mut vs = Vec::new();
         let mut hs = Vec::new();
@@ -202,6 +203,31 @@ impl Table {
             writeu32(&mut fd,h);
         }
     }
+
+    fn search(&self,y:u32)->Option<u32> {
+        let n = self.hs.len();
+        let mut hys = Vec::new();
+        for t in 0..n {
+            hys.push(self.hs[t] ^ y);
+        }
+        loop {
+            for t in 0..n {
+                let h = self.hs[t];
+                let hy = hys[t];
+                let v = &self.vs[t];
+                match v.binary_search_by(|&(xi,yi)| yi.cmp(&hy)) {
+                    Err(_) => (),
+                    Ok(i) => {
+                        println!("Found in table {}, index {}!",t,i);
+                        println!("{}",v[i].0);
+                        return Some(i as u32);
+                    }
+                }
+                hys[t] = f0(hy) ^ h;
+            }
+        }
+        None
+    }
 }
 
 fn writeu32<T:Write>(fd:&mut T,x:u32) {
@@ -239,7 +265,17 @@ fn readu64<T:Read>(fd:&mut T)->u64 {
 //     let m = 10000 as usize;
 
 fn main() {
-    // let tbl = Table::new(100);
-    // tbl.save("rainbow.dat");
-    let tbl = Table::load("rainbow.dat");
+    let path = "rainbow.dat";
+    let tbl =
+        if std::path::Path::new(path).exists() {
+            println!("Loading existing table");
+            Table::load(path)
+        } else {
+            println!("Generating new table");
+            let tbl = Table::new(100);
+            tbl.save(path);
+            tbl
+        };
+    println!("Searching");
+    let res = tbl.search(123456);
 }
