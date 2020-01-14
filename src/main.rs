@@ -52,7 +52,8 @@ fn jn(x:u32,y:u32)->u64 {
 
 // const M : u64 = 0x7fffffff;
 const M : u64 = 265371653;
-const E : u64 = 3;
+// const E : u64 = 3;
+const E : u64 = 6491167;
 
 fn tbl()->[u32;31] {
     let mut eks = [0_u32;31];
@@ -148,7 +149,8 @@ impl Table {
 	    if i & 0xff == 0 {
 		println!("{}/{}",i,m);
 	    }
-	    let mut k0 : u32 = xw.next() & M as u32;
+	    // let mut k0 : u32 = (xw.next() ^ i as u32) & M as u32;
+	    let mut k0 : u32 = i as u32;
 	    if k0 == M as u32 {
 		k0 = 0;
 	    }
@@ -248,11 +250,12 @@ fn readu64<T:Read>(fd:&mut T)->u64 {
 }
 
 fn main() {
-    let args = std::env::args().skip(1).map(|x| x.parse::<u32>().unwrap()).collect::<Vec<u32>>();
-    let path = "rainbow.dat";
+    let mut args = std::env::args().skip(1);
+    let path = &args.next().unwrap();
+    let targets = args.skip(1).map(|x| x.parse::<u32>().unwrap()).collect::<Vec<u32>>();
     let tbl =
         if std::path::Path::new(path).exists() {
-            println!("Loading existing table");
+            println!("Loading existing table from {}",path);
             Table::load(path)
         } else {
             println!("Generating new table");
@@ -261,7 +264,8 @@ fn main() {
             tbl
         };
     println!("Searching");
-    for target in args {
+    for target in targets {
+	println!("TARGET {}",target);
 	let res = tbl.search(target);
     }
 }
