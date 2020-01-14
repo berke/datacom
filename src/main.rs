@@ -1,6 +1,19 @@
 use std::cmp::Ordering;
 
-const N : usize = 2;
+mod cmath {
+    use libc::c_double;
+
+    #[link_name = "m"]
+    extern "C" {
+	pub fn erf(n: c_double) -> c_double;
+    }
+}
+
+pub fn erf(x: f64) -> f64 {
+    unsafe { cmath::erf(x) }
+}
+
+const N : usize = 16;
 
 struct Xorwow {
     a:u32,
@@ -31,8 +44,8 @@ impl Xorwow {
 	t ^= t << 1;
 	t ^= s ^ (s << 4);
 	self.a = t;
-	self.counter += 362437;
-	let r = t + self.counter;
+	self.counter = self.counter.wrapping_add(362437);
+	let r = t.wrapping_add(self.counter);
 	r
     }
 }
@@ -117,7 +130,7 @@ fn hd64(k1:&[u64],k2:&[u64])->u32 {
     d
 }
 
-fn main() {
+fn main1() {
     let seed = 99123411;
     let mut xw = Xorwow::new(seed);
     let mut k1 = [0_u32;4];
@@ -284,3 +297,162 @@ fn main() {
 	println!("EST {:3} {:02X} {}", i, k, v[k]);
     }
 }
+
+struct YW {
+    w:usize,
+    n:usize,
+    n0:usize,
+    n0_set:bool,
+    m:usize,
+    x0:f64,
+    dx:f64,
+    h:Vec<usize>
+}
+
+impl YW {
+    pub fn new(x0:f64,x1:f64,nx:usize)->Self {
+	let dx = (x1 - x0) / (nx - 1) as f64;
+	let mut h = Vec::new();
+	h.resize(nx,0_usize);
+	YW{ w:0, n:0, m:0, n0:0, n0_set:false, x0, dx, h }
+    }
+    pub fn add(&mut self,x:u32,n:u32) {
+	self.w += x.count_ones() as usize;
+	self.n += n as usize;
+    }
+    pub fn nccum(n:f64,x:f64)->f64 {
+	(erf(n.ln().ln().sqrt()*x)+1.0)/2.0
+    }
+    pub fn dump(&self) {
+	let mut c0 = 0.0;
+	let mut e_tot = 0.0;
+	let n = self.n0 as f64;
+	for i in 0..self.h.len() {
+	    let x = self.x0 + self.dx*i as f64;
+	    let c = Self::nccum(n,x);
+	    let dc = c - c0;
+	    let p = self.h[i] as f64/self.m as f64;
+	    let e = (p-dc).abs();
+	    e_tot += p; // e;
+	    println!("{:8.3} {:15.07e} {:15.07e} {:15.07e}",x,p,dc,e);
+	    c0 = c;
+	}
+	e_tot *= self.dx;
+	println!("E_TOT: {:15.07e}",e_tot);
+    }
+    pub fn next(&mut self) {
+	if self.n0_set {
+	    if self.n != self.n0 {
+		panic!("Mismatch")
+	    }
+	} else {
+	    self.n0 = self.n;
+	    self.n0_set = true;
+	}
+	let n = self.n as f64;
+	let x = (2.0 * self.w as f64 - n) / ((2.0*n*n.ln().ln()).sqrt());
+	let j = (((x - self.x0) / self.dx).floor().max(0.0) as usize).min(self.h.len() - 1);
+	self.h[j] += 1;
+	self.m += 1;
+	self.n = 0;
+	self.w = 0;
+    }
+}
+
+struct Clcg {
+    a:u32,
+    b:u32,
+    q:u32
+}
+
+impl Clcg {
+    pub fn new(a:u32,b:u32,seed:u32)->Self {
+	Clcg{ a,b,q:seed }
+    }
+    // a = 0x343fd
+    // b = 0x269ec3
+    pub fn next(&mut self)->(u32,u32) {
+	let q = self.a.wrapping_mul(self.q).wrapping_add(self.b);
+	self.q = q;
+	(0 | (q >> 16) & 32767, 15)
+    }
+}
+
+// fn napprox(n:usize,x:f64)->f64 {
+//     // Phi(x*sqrt(2*ln(ln(n))))
+//     let n = n as f64;
+//     ((x * n.ln().ln().sqrt()).erf() + 1.0) / 2.0
+// }
+
+fn main() {
+    let m = std::env::args().nth(1).unwrap().parse::<usize>().unwrap();
+    let n_shift = std::env::args().nth(2).unwrap().parse::<usize>().unwrap();
+    //let mut yw = YW::new(-3.5,3.5,50);
+    let mut yw = YW::new(-2.5,2.5,10);
+    let seed = 99123411;
+    let mut seeder = Xorwow::new(seed);
+    // let m = 100;
+    // let mut ss = Vec::new();
+    let n_max = 1_usize << n_shift;
+    if false {
+	let k1 = [0xdeadbe33, 0x0badcafe, 0x12345678, 0x9abcdef0];
+	for k in 0..m {
+	    let seed = seeder.next();
+	    // let mut xw = Clcg::new(seed);
+	    //let mut xw = Xorwow::new(seed);
+	    let mut xy = (seed,seed);
+	    let mut n = 0_usize;
+	    loop {
+		// let (x,p) = xw.next();
+		// let (x,p) = (xw.next(),32);
+		xy = h(xy,k1);
+		let (x,p) = (xy.0,32);
+		yw.add(x,p);
+		n += p as usize;
+		if n >= n_max { break; }
+
+		let (x,p) = (xy.1,32);
+		yw.add(x,p);
+		n += p as usize;
+		if n >= n_max { break; }
+	    }
+	    yw.next();
+	    // let s = yw.get();
+	    // println!("{:22.14e}", s);
+	    // if (k % 10) == 0 { eprintln!("{:05} {:22.14e} N={}", k, s, n); }
+	}
+    } else {
+	for k in 0..m {
+	    let seed = seeder.next();
+	    let mut n = 0_usize;
+	    // let mut st = Clcg::new(0x343fd,0x269ec3,seed);
+	    // a = 0x343fd
+	    // b = 0x269ec3
+	    let mut st = Xorwow::new(seed);
+	    // let st = rdrand::RdRand::new().unwrap();
+	    loop {
+		// let (x,p) = (st.try_next_u32().unwrap(),32);
+		let (x,p) = (st.next(),32);
+		// let (x,p) = st.next();
+		yw.add(x,p);
+		n += p as usize;
+		if n >= n_max { break; }
+	    }
+	    yw.next();
+	}
+    }
+    yw.dump();
+}
+
+// xw                   1000 26 3.569e-2
+// xw                   2000 26 3.958e-2
+// xw                    100 30 5.710e-2
+// cl                   1000 26 4.978e-2
+// cl                   2000 26 5.235e-2
+// cl(1,12345)          2000 26 1.645e-1
+// cl(0x343fd,1)        2000 26 4.873e-2
+// cl(0x343fd,1)         100 30 1.049e-1
+// cl(0x343fd,0x269ec3)  100 30 7.908e-2
+// rdrand                100 26 5.708e-2
+// rdrand                100 29 6.081e-2 !!
+// rdrand               1000 24 4.182e-2 !!
