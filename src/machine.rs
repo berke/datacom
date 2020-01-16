@@ -132,16 +132,32 @@ impl Machine {
 	self.get(&Gate::Input(i))
     }
     pub fn binop(&self,op:Op,a:Index,b:Index)->Index {
+	let (a,b) = (a.min(b),a.max(b));
 	self.get(&Gate::Binop(op,a,b))
     }
     pub fn and(&self,a:Index,b:Index)->Index {
-	self.get(&Gate::Binop(Op::And,a,b))
+	if a == b {
+	    a
+	} else {
+	    let (a,b) = (a.min(b),a.max(b));
+	    self.get(&Gate::Binop(Op::And,a,b))
+	}
     }
     pub fn or(&self,a:Index,b:Index)->Index {
-	self.get(&Gate::Binop(Op::Or,a,b))
+	if a == b {
+	    a
+	} else {
+	    let (a,b) = (a.min(b),a.max(b));
+	    self.get(&Gate::Binop(Op::Or,a,b))
+	}
     }
     pub fn xor(&self,a:Index,b:Index)->Index {
-	self.get(&Gate::Binop(Op::Xor,a,b))
+	if a == b {
+	    self.zero()
+	} else {
+	    let (a,b) = (a.min(b),a.max(b));
+	    self.get(&Gate::Binop(Op::Xor,a,b))
+	}
     }
     pub fn not(&self,a:Index)->Index {
 	self.get(&Gate::Not(a))
@@ -226,21 +242,16 @@ impl Register {
 	    let not = |x| mac.not(x);
 
 	    let w =
-		or(,
-		    and(c,or(,and(not(,u),not(,v)),and(u,v))),
-		    and(not(,c),
-			    or(,
-				and(not(,u),v),
-				and(u,not(,v)))));
+		or(
+		    and(c,or(and(not(u),not(v)),and(u,v))),
+		    and(not(c),
+			    or(and(not(u),v),
+				and(u,not(v)))));
 	    let c2 =
-		or(,
-		    and(c,
-			    or(,
-				or(,
-				    and(not(,u),v),
-				    and(u,not(,v))),
+		or(and(c, or(or(and(not(u),v),
+				    and(u,not(v))),
 				and(u,v))),
-		    and(not(,c),
+		    and(not(c),
 			    and(u,v)));
 	    (Register(vec![w]),c2)
 	} else {
