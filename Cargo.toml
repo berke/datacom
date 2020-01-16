@@ -11,3 +11,7 @@ edition = "2018"
 [[bin]]
 name = "des"
 path = "src/des.rs"
+
+[[bin]]
+name = "test_machine"
+path = "src/test_machine.rs"
