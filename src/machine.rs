@@ -1,6 +1,5 @@
 use std::collections::BTreeMap;
 use std::cell::{Cell,RefCell};
-use std::borrow::BorrowMut;
 
 type Index = u32;
 
@@ -94,7 +93,7 @@ impl Machine {
 			Op::Xor => x1 ^ x2
 		    }
 		},
-		Zero => false
+		Gate::Zero => false
 	    };
 	done[i] = true;
 	value[i] = x;
@@ -121,15 +120,14 @@ impl Machine {
 	let mut cnt = 0;
 	let sp  = self.spec.borrow();
 	for i0 in 0..sp.len() {
-	    let i = i0 as Index;
 	    cnt +=
 		match sp[i0] {
 		    Gate::Zero => 1,
 		    Gate::Input(_) => 0,
-		    Gate::Not(j) => 2,
-		    Gate::Binop(Op::And,j1,j2) => 4,
-		    Gate::Binop(Op::Or,j1,j2) => 4,
-		    Gate::Binop(Op::Xor,j1,j2) => 4
+		    Gate::Not(_) => 2,
+		    Gate::Binop(Op::And,_,_) => 4,
+		    Gate::Binop(Op::Or,_,_) => 4,
+		    Gate::Binop(Op::Xor,_,_) => 4
 		}
 	}
 	cnt += constraints.len();
@@ -143,7 +141,7 @@ impl Machine {
 	let sp  = self.spec.borrow();
 	let m = self.num_clauses(constraints);
 	let n = sp.len();
-	write!(fd,"p cnf {} {}\n",m,n);
+	write!(fd,"p cnf {} {}\n",m,n)?;
 	let pos = |i| (i + 1) as i32;
 	let neg = |i| -((i + 1) as i32);
 	for i0 in 0..sp.len() {
@@ -320,7 +318,6 @@ impl Register {
     fn binop(self:&Register,mac:&mut Machine,op:Op,other:&Register)->Register {
 	let Register(u) = &self;
 	let Register(v) = &other;
-	let n = u.len();
 	Register(u.iter().zip(v.iter()).map(|(ui,vi)| mac.binop(op,*ui,*vi)).collect())
     }
 
@@ -432,8 +429,8 @@ impl Register {
 	    //       -> c [w0 w1] carry
 	    let u0 = self.slice(0,p);
 	    let v0 = other.slice(0,p);
-	    let mut u1 = self.slice(p,q);
-	    let mut v1 = other.slice(p,q);
+	    let u1 = self.slice(p,q);
+	    let v1 = other.slice(p,q);
 	    let (mut w1,c1) = u1.add(mac,&v1,carry);
 	    let (mut w0,c0) = u0.add(mac,&v0,c1);
 	    w0.append(&mut w1);
