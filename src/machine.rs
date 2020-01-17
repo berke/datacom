@@ -20,69 +20,6 @@ pub enum Op {
     Xor = 2
 }
 
-// pub struct &mut Machine(RefCell<Machine>);
-
-// impl Copy for &mut Machine { }
-
-// impl Clone for &mut Machine {
-//     fn clone(&self)->&mut Machine {
-// 	&mut Machine(self.0.clone())
-//     }
-// }
-
-// // impl From<RefCell<Machine>> for &mut Machine {
-// //     fn from(mac:RefCell<Machine>)->Self {
-// // 	&mut Machine(mac)
-// //     }
-// // }
-
-// impl &mut Machine {
-//     pub fn new(mac:Machine)->Self {
-// 	&mut Machine(RefCell::new(mac))
-//     }
-
-//     pub fn dump(self) {
-// 	let mut mac = self.0.borrow_mut();
-// 	mac.dump();
-//     }
-    
-//     pub fn input(self,i:u16)->Index {
-// 	let mut mac = self.0.borrow_mut();
-// 	mac.get(&Gate::Input(i))
-//     }
-
-//     pub fn binop(self,op:Op,a:Index,b:Index)->Index {
-// 	let mut mac = self.0.borrow_mut();
-// 	mac.get(&Gate::Binop(op,a,b))
-//     }
-
-//     pub fn and(self,a:Index,b:Index)->Index {
-// 	let mut mac = self.0.borrow_mut();
-// 	mac.get(&Gate::Binop(Op::And,a,b))
-//     }
-//     pub fn or(self,a:Index,b:Index)->Index {
-// 	let mut mac = self.0.borrow_mut();
-// 	mac.get(&Gate::Binop(Op::Or,a,b))
-//     }
-//     pub fn not(self,a:Index)->Index {
-// 	let mut mac = self.0.borrow_mut();
-// 	mac.get(&Gate::Not(a))
-//     }
-//     // pub fn or(&mut self,a:Index,b:Index)->Index {
-//     // 	self.get(&Gate::Binop(Op::Or,a,b))
-//     // }
-//     // pub fn xor(&mut self,a:Index,b:Index)->Index {
-//     // 	self.get(&Gate::Binop(Op::Xor,a,b))
-//     // }
-//     // pub fn not(&mut self,a:Index)->Index {
-//     // 	self.get(&Gate::Not(a))
-//     // }
-//     pub fn zero(&mut self)->Index {
-// 	let mut mac = self.0.borrow_mut();
-// 	mac.zero()
-//     }
-// }
-
 #[derive(Clone)]
 pub struct Machine {
     spec:RefCell<Vec<Gate>>,
@@ -93,7 +30,7 @@ impl Machine {
     pub fn dump(&self) {
 	let spec = self.spec.borrow();
 	for i in 0..spec.len() {
-	    print!("x{} <- ",i);
+	    print!("x{} <- ",i+1);
 	    let v = &spec[i];
 	    match v {
 		Gate::Zero => println!("0"),
@@ -104,6 +41,117 @@ impl Machine {
 		Gate::Binop(Op::Xor,i,j) => println!("x{} ^ x{}",i,j)
 	    }
 	}
+    }
+
+    pub fn num_clauses(&self,constraints:&Vec<(Index,bool)>)->usize {
+	let mut cnt = 0;
+	let sp  = self.spec.borrow();
+	for i0 in 0..sp.len() {
+	    let i = i0 as u16;
+	    cnt +=
+		match sp[i0] {
+		    Gate::Zero => 1,
+		    Gate::Input(_) => 0,
+		    Gate::Not(j) => 2,
+		    Gate::Binop(Op::And,j1,j2) => 4,
+		    Gate::Binop(Op::Or,j1,j2) => 4,
+		    Gate::Binop(Op::Xor,j1,j2) => 4
+		}
+	}
+	cnt += constraints.len();
+	cnt
+    }
+
+    pub fn save_cnf(&self,path:&str,constraints:&Vec<(Index,bool)>)->Result<(),std::io::Error> {
+	use std::io::Write;
+	let fd = std::fs::File::create(path)?;
+	let mut fd = std::io::BufWriter::new(fd);
+	let sp  = self.spec.borrow();
+	let m = self.num_clauses(constraints);
+	let n = sp.len();
+	write!(fd,"p cnf {} {}\n",m,n);
+	let pos = |i| (i + 1) as i32;
+	let neg = |i| -((i + 1) as i32);
+	for i0 in 0..sp.len() {
+	    let z = i0 as u16;
+	    match sp[i0] {
+		Gate::Zero => write!(fd,"{} 0\n",neg(z))?,
+		Gate::Input(_) => (),
+		// y = !x
+		// x y w o
+		// -------   
+		// 0 0 1 0
+		// 0 1 1 1
+		// 1 0 0 1
+		// 1 1 0 0
+		// (-x-y)(x+y)
+		Gate::Not(x) => {
+		    write!(fd,"{} {} 0\n",pos(x),pos(z))?;
+		    write!(fd,"{} {} 0\n",neg(x),neg(z))?;
+		},
+		// z = x & y
+		// x y z w o
+		// ---------
+		// 0 0 0 0 1
+		// 0 0 1 0 0
+		// 0 1 0 0 1
+		// 0 1 1 0 0
+		// 1 0 0 0 1
+		// 1 0 1 0 0
+		// 1 1 0 1 0
+		// 1 1 1 1 1
+		Gate::Binop(Op::And,x,y) => {
+		    write!(fd,"{} {} {} 0\n",pos(x),pos(y),neg(z))?;
+		    write!(fd,"{} {} {} 0\n",pos(x),neg(y),neg(z))?;
+		    write!(fd,"{} {} {} 0\n",neg(x),pos(y),neg(z))?;
+		    write!(fd,"{} {} {} 0\n",neg(x),neg(y),pos(z))?;
+		},
+		// z = x | y
+		// x y z w o
+		// ---------
+		// 0 0 0 0 1
+		// 0 0 1 0 0
+		// 0 1 0 1 0
+		// 0 1 1 1 1
+		// 1 0 0 1 0
+		// 1 0 1 1 1
+		// 1 1 0 1 0
+		// 1 1 1 1 1
+		Gate::Binop(Op::Or,x,y) => {
+		    write!(fd,"{} {} {} 0\n",pos(x),pos(y),neg(z))?;
+		    write!(fd,"{} {} {} 0\n",pos(x),neg(y),pos(z))?;
+		    write!(fd,"{} {} {} 0\n",neg(x),pos(y),pos(z))?;
+		    write!(fd,"{} {} {} 0\n",neg(x),neg(y),pos(z))?;
+		},
+		
+		// ENCODE z = x ^ y
+		// w := x^z
+		// o := (w = z)
+		// x y w z o
+		// ---------
+		// 0 0 0 0 1
+		// 0 0 0 1 0 (1) -x -y +z
+		// 0 1 1 0 0 (2) -x +y -z
+		// 0 1 1 1 1
+		// 1 0 1 0 0 (3) +x -y -z
+		// 1 0 1 1 1
+		// 1 1 0 0 1
+		// 1 1 0 1 0 (4) +x +y +z
+		//
+		// (1)     (2)     (3)    (4)
+		// (-x-y+z)(-x+y-z)(x-y-z)(x+y+z)
+		Gate::Binop(Op::Xor,x,y) => {
+		    write!(fd,"{} {} {} 0\n",pos(x),pos(y),neg(z))?;
+		    write!(fd,"{} {} {} 0\n",pos(x),neg(y),pos(z))?;
+		    write!(fd,"{} {} {} 0\n",neg(x),pos(y),pos(z))?;
+		    write!(fd,"{} {} {} 0\n",neg(x),neg(y),neg(z))?;
+		}
+	    }
+	}
+	for &(i,b) in constraints.iter() {
+	    write!(fd,"{} 0\n",if b { pos(i) } else { neg(i) })?;
+	}
+	Ok(())
     }
     pub fn new()->Self {
 	Machine{
@@ -209,6 +257,11 @@ impl Register {
 	u.append(v);
     }
 
+    pub fn constraints(self:&Register,x:u64)->Vec<(Index,bool)> {
+	let n = self.0.len();
+	self.0.iter().enumerate().map(|(i,&u)| (u,(x >> (n - 1 - i)) & 1 != 0)).collect()
+    }
+
     pub fn add(self:&Register,mac:&mut Machine,other:&Register,carry:Index)->(Register,Index) {
 	let Register(u) = &self;
 	let Register(v) = &other;
@@ -229,10 +282,11 @@ impl Register {
 	    // 1 1 0 | 0 1
 	    // 1 1 1 | 1 1
 	    //
-	    // W  = uvC + uVc + Uvc + UVC
-	    //    = C(uv+UV) + c(uV + Uv)
-	    // C' = uVC + UvC + UVc + UVC
-	    //    = C(uV+Uv+UV) + cUV
+	    // W  = uvC + uVc + Uvc + UVC       -- ok
+	    //    = C(uv+UV) + c(uV + Uv)       -- ok
+	    // C' = uVC + UvC + UVc + UVC       -- ok
+	    //    = C(uV+Uv+UV) + cUV           -- ok
+	    //    = C(!uv) + cUV                -- ok
 	    let u = u[0];
 	    let v = v[0];
 	    let c = carry;
@@ -241,18 +295,18 @@ impl Register {
 	    let or = |x,y| mac.or(x,y);
 	    let not = |x| mac.not(x);
 
+	    let _c = not(c);
+	    let uv = and(u,v);
+	    let u_v = and(u,not(v));
+	    let _uv = and(not(u),v);
+	    let _u_v = and(not(u),not(v));
+
 	    let w =
-		or(
-		    and(c,or(and(not(u),not(v)),and(u,v))),
-		    and(not(c),
-			    or(and(not(u),v),
-				and(u,not(v)))));
+		or(and(c,or(_u_v,uv)),
+		   and(_c,or(_uv,u_v)));
 	    let c2 =
-		or(and(c, or(or(and(not(u),v),
-				    and(u,not(v))),
-				and(u,v))),
-		    and(not(c),
-			    and(u,v)));
+		or(and(c,not(_u_v)),
+		   and(_c,uv));
 	    (Register(vec![w]),c2)
 	} else {
 	    let p = n / 2;
@@ -261,10 +315,10 @@ impl Register {
 	    let v0 = other.slice(0,p);
 	    let mut u1 = self.slice(p,q);
 	    let mut v1 = other.slice(p,q);
-	    let (mut w0,c) = u0.add(mac,&v0,mac.zero());
-	    let (mut w1,c2) = u1.add(mac,&v1,c);
-	    w1.append(&mut w0);
-	    (w1,c)
+	    let (mut w1,c) = u1.add(mac,&v1,carry);
+	    let (mut w0,c0) = u0.add(mac,&v0,c);
+	    w0.append(&mut w1);
+	    (w0,c)
 	};
 	res
     }
