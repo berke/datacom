@@ -15,6 +15,10 @@ struct Traffic<T> {
 const NROUND : usize = 32;
 
 fn main() {
+    // let mut args = std::env::args().skip(1);
+    // let path = &args.next().unwrap();
+    // let params = args.map(|x| x.parse::<u32>().unwrap()).collect::<Vec<u32>>();
+
     let mut mac = Machine::new();
     // let mut key1 = Register::input(&mut mac,0,32);
     // let mut key2 = Register::input(&mut mac,32,32);
@@ -44,7 +48,8 @@ fn main() {
 	let (y0,y1) = xtea::encipher((x0,x1),key,NROUND);
 	// let y0 = y0 + 1234578; // TO TEST
 	traffic.push(Traffic{ x:(x0,x1),y:(y0,y1) });
-	println!("DIRECT TR{}: {:08X} {:08X} -> {:08X} {:08X}",i,x0,x1,y0,y1);
+	println!("DIRECT TR{}: {:08X} {:08X} {:08X} {:08X} {:08X} {:08X} -> {:08X},{:08X}",
+		 i,k0,k1,k2,k3,x0,x1,y0,y1);
     }
 
     let k0_r = Register::input(&mut mac,32);
@@ -71,9 +76,15 @@ fn main() {
 	constraints.append(&mut x0_r.constraints(x0 as u64));
 	constraints.append(&mut x1_r.constraints(x1 as u64));
 	let delta = 0x9e3779b9_u32;
-	let mut sum : u32 = 0;
+	let delta_r = Register::input(&mut mac,32);
+	constraints.append(&mut delta_r.constraints(delta as u64));
+
+	// let mut sum : u32 = 0;
 	let mut v0_r = x0_r.clone();
 	let mut v1_r = x1_r.clone();
+	let mut sum_r = Register::input(&mut mac,32);
+	constraints.append(&mut sum_r.constraints(0));
+	
 	for r in 0..NROUND {
 	    //       t3
 	    //       ||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||
@@ -91,24 +102,55 @@ fn main() {
 	    let t1 = v1s4.xor(&mut mac,&v1s5);
 	    let (t2,_) = t1.add(&mut mac,&v1_r,zero);
 
-            let s = sum.wrapping_add(key[(sum & 3) as usize]);
-	    let s_r = Register::input(&mut mac,32);
-	    constraints.append(&mut s_r.constraints(s as u64));
+	    let s0 = sum_r.bit(0);
+	    let s1 = sum_r.bit(1);
+	    let s00 = mac.and(mac.not(s1),mac.not(s0));
+	    let s01 = mac.and(mac.not(s1),s0);
+	    let s10 = mac.and(s1,mac.not(s0));
+	    let s11 = mac.and(s1,s0);
+	    let k00 = key_r[0].scale(&mut mac,s00);
+	    let k01 = key_r[1].scale(&mut mac,s01);
+	    let k10 = key_r[2].scale(&mut mac,s10);
+	    let k11 = key_r[3].scale(&mut mac,s11);
+	    let k0 = k00.or(&mut mac,&k01);
+	    let k1 = k10.or(&mut mac,&k11);
+	    let k = k0.or(&mut mac,&k1);
+	    let (s,_) = sum_r.add(&mut mac,&k,zero);
+            // let s = sum.wrapping_add(key[(sum & 3) as usize]);
+	    // let s_r = Register::input(&mut mac,32);
+	    // constraints.append(&mut s_r.constraints(s as u64));
 
-	    let t3 = t2.xor(&mut mac,&s_r);
+	    let t3 = t2.xor(&mut mac,&s);
 	    let (v0_r_bis,_) = v0_r.add(&mut mac,&t3,zero);
 	    v0_r = v0_r_bis;
 
-	    sum += delta;
+	    let (sum_r_next,_) = sum_r.add(&mut mac,&delta_r,zero);
+	    sum_r = sum_r_next;
 
 	    let v0s4 = v0_r.shift_left(4,zero);
 	    let v0s5 = v0_r.shift_right(5,zero);
 	    let t1 = v0s4.xor(&mut mac,&v0s5);
 	    let (t2,_) = t1.add(&mut mac,&v0_r,zero);
-            let s = sum.wrapping_add(key[((sum >> 11) & 3) as usize]);
-	    let s_r = Register::input(&mut mac,32);
-	    constraints.append(&mut s_r.constraints(s as u64));
-	    let t3 = t2.xor(&mut mac,&s_r);
+
+	    let s0 = sum_r.bit(11);
+	    let s1 = sum_r.bit(12);
+	    let s00 = mac.and(mac.not(s1),mac.not(s0));
+	    let s01 = mac.and(mac.not(s1),s0);
+	    let s10 = mac.and(s1,mac.not(s0));
+	    let s11 = mac.and(s1,s0);
+	    let k00 = key_r[0].scale(&mut mac,s00);
+	    let k01 = key_r[1].scale(&mut mac,s01);
+	    let k10 = key_r[2].scale(&mut mac,s10);
+	    let k11 = key_r[3].scale(&mut mac,s11);
+	    let k0 = k00.or(&mut mac,&k01);
+	    let k1 = k10.or(&mut mac,&k11);
+	    let k = k0.or(&mut mac,&k1);
+	    let (s,_) = sum_r.add(&mut mac,&k,zero);
+
+            // let s = sum.wrapping_add(key[((sum >> 11) & 3) as usize]);
+	    // let s_r = Register::input(&mut mac,32);
+	    // constraints.append(&mut s_r.constraints(s as u64));
+	    let t3 = t2.xor(&mut mac,&s);
 	    let (v1_r_bis,_) = v1_r.add(&mut mac,&t3,zero);
 	    v1_r = v1_r_bis;
 
@@ -120,28 +162,9 @@ fn main() {
 	Traffic{ x:(x0_r.clone(),x1_r.clone()),y:(v0_r.clone(),v1_r.clone()) }
     }).collect();
 
-
-    // // let kc1 = key1.constraints(k1 as u64);
-
-    // let a = Register::input(&mut mac,32);
-    // let b = Register::input(&mut mac,32);
-    // let zero = mac.zero();
-    // let (c,_c) = a.add(&mut mac,&b,zero);
-    // // let c = a.or(&mut mac,&b);
-    // let a0 = xw.next();
-    // let b0 = xw.next();
-    // // let a0 = 0b00110011_u8;
-    // // let b0 = 0b01011100_u8;
-    // let c0 = a0.wrapping_add(b0);
-    // // let c0 = a0 | b0;
-    // let mut a1 = a.constraints(a0 as u64);
-    // let mut c1 = c.constraints(c0 as u64);
-    // a1.append(&mut c1);
-
     out_constraints.append(&mut constraints.clone());
     mac.save_cnf("mac.cnf",&out_constraints).unwrap();
     // mac.dump();
-    // println!("{:032b} + {:032b} = {:032b}",a0,b0,c0);
 
     for k in 0..4 {
 	constraints.append(&mut key_r[k].constraints(key[k] as u64));

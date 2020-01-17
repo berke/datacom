@@ -7,7 +7,8 @@ pub fn encipher((x0,x1):(u32,u32), k:[u32;4],nround:usize)->(u32,u32)
     let mut v1 = x1;
 
     for _ in 0..nround {
-        v0 += (((v1 << 4) ^ (v1 >> 5)).wrapping_add(v1)) ^ (sum.wrapping_add(k[(sum & 3) as usize]));
+	// println!("ROUND {:08X} {:08X} {:08X}",sum,v0,v1);
+	v0 += (((v1 << 4) ^ (v1 >> 5)).wrapping_add(v1)) ^ (sum.wrapping_add(k[(sum & 3) as usize]));
         sum += delta;
         v1 += (((v0 << 4) ^ (v0 >> 5)).wrapping_add(v0)) ^ (sum.wrapping_add(k[((sum>>11) & 3) as usize]));
     }

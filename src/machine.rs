@@ -323,10 +323,11 @@ impl Register {
 
     pub fn bit(self:&Register,i:usize)->Index {
 	let Register(u) = &self;
-	u[i]
+	let n = u.len();
+	u[n - 1 - i]
     }
 
-    pub fn and_bit(self:&Register,mac:&mut Machine,bit:Index)->Register {
+    pub fn scale(self:&Register,mac:&mut Machine,bit:Index)->Register {
 	let Register(u) = &self;
 	Register(u.iter().map(|&ui| mac.and(bit,ui)).collect())
     }
