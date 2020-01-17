@@ -1,13 +1,13 @@
 use std::collections::BTreeMap;
-use std::cell::RefCell;
+use std::cell::{Cell,RefCell};
 use std::borrow::BorrowMut;
 
-pub type Index = u16;
+type Index = u32;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum Gate {
     Zero,
-    Input(u16),
+    Input(Index),
     Not(Index),
     Binop(Op,Index,Index)
 }
@@ -23,10 +23,83 @@ pub enum Op {
 #[derive(Clone)]
 pub struct Machine {
     spec:RefCell<Vec<Gate>>,
-    index:RefCell<BTreeMap<Gate,Index>>
+    index:RefCell<BTreeMap<Gate,Index>>,
+    n_input:Cell<Index>
+
 }
 
 impl Machine {
+    pub fn eval(&self,constraints:&Vec<(Index,bool)>) {
+	let n = self.n_input.get() as usize;
+	let mut inputs = Vec::new();
+	let mut defined = Vec::new();
+	let spec = self.spec.borrow();
+	let m = spec.len();
+	inputs.resize(n,false);
+	defined.resize(n,false);
+	let mut n_ign_constr = 0;
+	for &(i,b) in constraints.iter() {
+	    let i = i as usize;
+	    match spec[i] {
+		Gate::Input(j) => {
+		    let j = j as usize;
+		    if defined[j] {
+			println!("Multiply defined input {}",i)
+		    } else {
+			defined[j] = true;
+			inputs[j] = b;
+		    }
+		},
+		_ => n_ign_constr += 1
+	    }
+	}
+	if n_ign_constr > 0 {
+	    println!("Warning: Number of ignored constraints on non-input gates: {}",n_ign_constr);
+	}
+	for i in 0..n {
+	    if !defined[i] {
+		panic!("Input {} not defined",i);
+	    }
+	}
+	let mut busy = Vec::new();
+	let mut done = Vec::new();
+	let mut value = Vec::new();
+	busy.resize(m,false);
+	done.resize(m,false);
+	value.resize(m,false);
+	for i in 0..m {
+	    let _ = self.eval_inner(&inputs,&mut busy,&mut done,&mut value,i as Index);
+	}
+    }
+    fn eval_inner(&self,inputs:&Vec<bool>,busy:&mut Vec<bool>,done:&mut Vec<bool>,value:&mut Vec<bool>,i:Index)->bool {
+	let i = i as usize;
+	if busy[i] {
+	    panic!("Circular dependency involving gate {}",i);
+	}
+	if done[i] {
+	    return value[i];
+	}
+	busy[i] = true;
+	let x =
+	    match self.spec.borrow()[i] {
+		Gate::Input(j) => inputs[j as usize],
+		Gate::Not(j) => !self.eval_inner(inputs,busy,done,value,j),
+		Gate::Binop(op,j1,j2) => {
+		    let x1 = self.eval_inner(inputs,busy,done,value,j1);
+		    let x2 = self.eval_inner(inputs,busy,done,value,j2);
+		    match op {
+			Op::And => x1 & x2,
+			Op::Or => x1 | x2,
+			Op::Xor => x1 ^ x2
+		    }
+		},
+		Zero => false
+	    };
+	done[i] = true;
+	value[i] = x;
+	busy[i] = false;
+	x
+    }
     pub fn dump(&self) {
 	let spec = self.spec.borrow();
 	for i in 0..spec.len() {
@@ -47,7 +120,7 @@ impl Machine {
 	let mut cnt = 0;
 	let sp  = self.spec.borrow();
 	for i0 in 0..sp.len() {
-	    let i = i0 as u16;
+	    let i = i0 as Index;
 	    cnt +=
 		match sp[i0] {
 		    Gate::Zero => 1,
@@ -73,7 +146,7 @@ impl Machine {
 	let pos = |i| (i + 1) as i32;
 	let neg = |i| -((i + 1) as i32);
 	for i0 in 0..sp.len() {
-	    let z = i0 as u16;
+	    let z = i0 as Index;
 	    match sp[i0] {
 		Gate::Zero => write!(fd,"{} 0\n",neg(z))?,
 		Gate::Input(_) => (),
@@ -156,7 +229,8 @@ impl Machine {
     pub fn new()->Self {
 	Machine{
 	    spec:RefCell::new(Vec::new()),
-	    index:RefCell::new(BTreeMap::new())
+	    index:RefCell::new(BTreeMap::new()),
+	    n_input:Cell::new(0)
 	}
     }
     pub fn find(&self,b:&Gate)->Option<Index> {
@@ -169,14 +243,14 @@ impl Machine {
 	    Some(i) => i,
 	    None => {
 		let mut spec = self.spec.borrow_mut();
-		let i = spec.len() as u16;
+		let i = spec.len() as Index;
 		spec.push(*b);
 		self.index.borrow_mut().insert(*b,i);
 		i
 	    }
 	}
     }
-    pub fn input(&self,i:u16)->Index {
+    pub fn input(&self,i:Index)->Index {
 	self.get(&Gate::Input(i))
     }
     pub fn binop(&self,op:Op,a:Index,b:Index)->Index {
@@ -218,13 +292,28 @@ impl Machine {
 pub struct Register(Vec<Index>);
 
 impl Register {
-    pub fn input(mac:&mut Machine,k0:u16,n:u16)->Self {
-	Register( (k0..k0+n).map(|k| mac.input(k as u16)).collect() )
+    pub fn input(mac:&mut Machine,n:Index)->Self {
+	let k0 = mac.n_input.get();
+	mac.n_input.set(k0 + n);
+	Register( (k0..k0+n).map(|k| mac.input(k as Index)).collect() )
     }
+
     pub fn rotate_left(self:&Register,s:usize)->Self {
 	let Register(v) = &self;
 	let n = v.len();
 	Register( (0..n).map(|k| v[(k + s) % n]).collect())
+    }
+
+    pub fn shift_left(self:&Register,s:usize,zero:Index)->Self {
+	let Register(v) = &self;
+	let n = v.len();
+	Register( (0..n).map(|k| if k + s < n { v[k + s] } else { zero }).collect())
+    }
+
+    pub fn shift_right(self:&Register,s:usize,zero:Index)->Self {
+	let Register(v) = &self;
+	let n = v.len();
+	Register( (0..n).map(|k| if k >= s { v[k - s] } else { zero }).collect())
     }
 
     fn binop(self:&Register,mac:&mut Machine,op:Op,other:&Register)->Register {
@@ -232,6 +321,16 @@ impl Register {
 	let Register(v) = &other;
 	let n = u.len();
 	Register(u.iter().zip(v.iter()).map(|(ui,vi)| mac.binop(op,*ui,*vi)).collect())
+    }
+
+    pub fn bit(self:&Register,i:usize)->Index {
+	let Register(u) = &self;
+	u[i]
+    }
+
+    pub fn and_bit(self:&Register,mac:&mut Machine,bit:Index)->Register {
+	let Register(u) = &self;
+	Register(u.iter().map(|&ui| mac.and(bit,ui)).collect())
     }
 
     pub fn and(self:&Register,mac:&mut Machine,other:&Register)->Register {
