@@ -9,7 +9,11 @@ pub struct Xorwow {
 impl Xorwow {
     pub fn new(seed:u64)->Self {
         let (a,b) = sp(seed);
-	Xorwow{ a,b,c:1,d:1,counter:0 }
+	let mut s = Xorwow{ a,b,c:1,d:1,counter:0 };
+	for _ in 0..1024 {
+	    let _ = s.next();
+	}
+	s
     }
     pub fn reset(&mut self,seed:u32) {
 	self.a = seed;

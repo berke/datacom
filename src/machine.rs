@@ -311,14 +311,17 @@ impl Register {
 	} else {
 	    let p = n / 2;
 	    let q = n - p;
+	    // self  ->   [u0 u1]
+	    // other ->   [v0 v1]
+	    //       -> c [w0 w1] carry
 	    let u0 = self.slice(0,p);
 	    let v0 = other.slice(0,p);
 	    let mut u1 = self.slice(p,q);
 	    let mut v1 = other.slice(p,q);
-	    let (mut w1,c) = u1.add(mac,&v1,carry);
-	    let (mut w0,c0) = u0.add(mac,&v0,c);
+	    let (mut w1,c1) = u1.add(mac,&v1,carry);
+	    let (mut w0,c0) = u0.add(mac,&v0,c1);
 	    w0.append(&mut w1);
-	    (w0,c)
+	    (w0,c0)
 	};
 	res
     }
