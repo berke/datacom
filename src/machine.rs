@@ -29,7 +29,7 @@ pub struct Machine {
 }
 
 impl Machine {
-    pub fn eval(&self,constraints:&Vec<(Index,bool)>) {
+    pub fn eval(&self,constraints:&Vec<(Index,bool)>)->Vec<bool> {
 	let n = self.n_input.get() as usize;
 	let mut inputs = Vec::new();
 	let mut defined = Vec::new();
@@ -69,7 +69,8 @@ impl Machine {
 	value.resize(m,false);
 	for i in 0..m {
 	    let _ = self.eval_inner(&inputs,&mut busy,&mut done,&mut value,i as Index);
-	}
+	};
+	value
     }
     fn eval_inner(&self,inputs:&Vec<bool>,busy:&mut Vec<bool>,done:&mut Vec<bool>,value:&mut Vec<bool>,i:Index)->bool {
 	let i = i as usize;
@@ -350,6 +351,10 @@ impl Register {
 	Register(Vec::from(&u[j0..j0+n]))
     }
 
+    pub fn clone(self:&Register)->Register {
+	Register(self.0.clone())
+    }
+
     pub fn append(self:&mut Register,other:&mut Register) {
 	let Register(ref mut u) = self;
 	let Register(ref mut v) = other;
@@ -359,6 +364,18 @@ impl Register {
     pub fn constraints(self:&Register,x:u64)->Vec<(Index,bool)> {
 	let n = self.0.len();
 	self.0.iter().enumerate().map(|(i,&u)| (u,(x >> (n - 1 - i)) & 1 != 0)).collect()
+    }
+
+    pub fn value(self:&Register,values:&Vec<bool>)->u64 {
+	let mut q = 0;
+	let n = self.0.len();
+	for i in 0..n {
+	    q <<= 1;
+	    if values[self.0[i] as usize] {
+		q |= 1;
+	    }
+	}
+	q
     }
 
     pub fn add(self:&Register,mac:&mut Machine,other:&Register,carry:Index)->(Register,Index) {

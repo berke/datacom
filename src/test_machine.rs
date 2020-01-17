@@ -5,9 +5,9 @@ mod xorwow;
 use xorwow::Xorwow;
 use machine::{Gate,Op,Machine,Register};
 
-struct Traffic {
-    x:(u32,u32),
-    y:(u32,u32)
+struct Traffic<T> {
+    x:(T,T),
+    y:(T,T)
 }
 
 const NROUND : usize = 2;
@@ -58,8 +58,8 @@ fn main() {
     // let not = |x| mac.not(x);
 
     // Encode
-    for i in 0..n {
-	let Traffic{ x:(x0,x1),y:(y0,y1) } = traffic[i];
+    let traffic_r : Vec<Traffic<Register>> = traffic.iter().map(|tr| {
+	let &Traffic{ x:(x0,x1),y:(y0,y1) } = tr;
 	let x0_r = Register::input(&mut mac,32);
 	let x1_r = Register::input(&mut mac,32);
 	// let y0_r = Register::input(&mut mac,32);
@@ -68,8 +68,8 @@ fn main() {
 	constraints.append(&mut x1_r.constraints(x1 as u64));
 	let delta = 0x9e3779b9_u32;
 	let mut sum : u32 = 0;
-	let mut v0_r = x0_r;
-	let mut v1_r = x1_r;
+	let mut v0_r = x0_r.clone();
+	let mut v1_r = x1_r.clone();
 	for r in 0..NROUND {
 	    //       t3
 	    //       ||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||
@@ -92,7 +92,8 @@ fn main() {
 	    constraints.append(&mut s_r.constraints(s as u64));
 
 	    let t3 = t2.xor(&mut mac,&s_r);
-	    let (v0_r,_) = v0_r.add(&mut mac,&t3,zero);
+	    let (v0_r_bis,_) = v0_r.add(&mut mac,&t3,zero);
+	    v0_r = v0_r_bis;
 
 	    sum += delta;
 
@@ -104,14 +105,16 @@ fn main() {
 	    let mut s_r = Register::input(&mut mac,32);
 	    constraints.append(&mut s_r.constraints(s as u64));
 	    let t3 = t2.xor(&mut mac,&s_r);
-	    let (v1_r,_) = v1_r.add(&mut mac,&t3,zero);
+	    let (v1_r_bis,_) = v1_r.add(&mut mac,&t3,zero);
+	    v1_r = v1_r_bis;
 
 	    if r + 1 == NROUND {
 		constraints.append(&mut v0_r.constraints(y0 as u64));
 		constraints.append(&mut v1_r.constraints(y1 as u64));
 	    }
 	}
-    }
+	Traffic{ x:(x0_r.clone(),x1_r.clone()),y:(v0_r.clone(),v1_r.clone()) }
+    }).collect();
 
 
     // // let kc1 = key1.constraints(k1 as u64);
@@ -139,5 +142,20 @@ fn main() {
     }
 
     println!("Evaluating...");
-    mac.eval(&constraints);
+    let v = mac.eval(&constraints);
+
+    for k in 0..4 {
+	println!("k{} {:08X} {:08X}",k,key[k],key_r[k].value(&v));
+    }
+
+    for i in 0..n {
+	let ti = &traffic[i];
+	let tri = &traffic_r[i];
+	println!("TR{} X:({:08X},{:08X})->({:08X},{:08X}) Y:({:08X},{:08X})->({:08X},{:08X})",
+		 i,
+		 ti.x.0,ti.x.1,
+		 tri.x.0.value(&v),tri.x.1.value(&v),
+		 ti.y.0,ti.y.1,
+		 tri.y.0.value(&v),tri.y.1.value(&v));
+    }
 }
