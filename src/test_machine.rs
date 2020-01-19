@@ -12,7 +12,7 @@ struct Traffic<T> {
     y:(T,T)
 }
 
-const NROUND : usize = 32;
+const NROUND : usize = 3;
 
 fn main() {
     // let mut args = std::env::args().skip(1);
@@ -33,14 +33,15 @@ fn main() {
     // }
     // mac.dump();
     let mut xw = Xorwow::new(129837471234567);
-    let k0 = xw.next();
-    let k1 = xw.next();
-    let k2 = xw.next();
-    let k3 = xw.next();
+    let helper = 0x0ff00f0f;
+    let k0 = xw.next() & helper;
+    let k1 = xw.next() & helper;
+    let k2 = xw.next() & helper;
+    let k3 = xw.next() & helper;
     let key = [k0,k1,k2,k3];
 
     // Generate
-    let n = 1;
+    let n = 256;
     let mut traffic = Vec::new();
     for i in 0..n {
 	let x0 = xw.next();
