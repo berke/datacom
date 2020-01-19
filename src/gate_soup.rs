@@ -1,4 +1,5 @@
 pub type Index = u32;
+pub type InputIndex = u32;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 #[repr(u8)]
@@ -11,7 +12,7 @@ pub enum Op {
 pub trait GateSoup {
     fn eval(&self,constraints:&Vec<(Index,bool)>)->Vec<bool>;
     fn dump(&self,path:&str)->Result<(),std::io::Error>;
-    fn input(&self,i:Index)->Index;
+    fn input(&self,i:InputIndex)->Index;
     fn new_input(&mut self)->Index;
     fn num_inputs(&self)->usize;
     fn binop(&self,op:Op,a:Index,b:Index)->Index;
@@ -21,4 +22,5 @@ pub trait GateSoup {
     fn not(&self,a:Index)->Index;
     fn zero(&self)->Index;
     fn one(&self)->Index;
+    fn as_input(&self,i:Index)->Option<InputIndex>;
 }

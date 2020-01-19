@@ -15,3 +15,7 @@ path = "src/des.rs"
 [[bin]]
 name = "test_machine"
 path = "src/test_machine.rs"
+
+[[bin]]
+name = "show_regs"
+path = "src/show_regs.rs"

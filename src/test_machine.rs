@@ -231,6 +231,14 @@ fn main() {
     mac.save_cnf("mac.cnf",&out_constraints).unwrap();
     mac.dump("mac.gt");
 
+    Register::dump(&mac,"mac.reg",
+		   vec![
+		       ("k0",&key_r[0]),
+		       ("k1",&key_r[1]),
+		       ("k2",&key_r[2]),
+		       ("k3",&key_r[3])
+		   ]);
+
     // for k in 0..4 {
     // 	constraints.append(&mut key_r[k].constraints(key[k] as u64));
     // }

@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap,BTreeSet};
 use std::cell::{Cell,RefCell};
 use std::rc::Rc;
-use crate::gate_soup::{Index,Op,GateSoup};
+use crate::gate_soup::{InputIndex,Index,Op,GateSoup};
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum Term {
@@ -15,7 +15,7 @@ pub enum Term {
 pub enum Atom {
     Zero,
     One,
-    Var(Index)
+    Var(InputIndex)
 }
 
 #[derive(Clone)]
@@ -336,7 +336,7 @@ impl GateSoup for Bracket {
 	self.n_input.set(i + 1);
 	self.get(&Term::Atom(Atom::Var(i)))
     }
-    fn input(&self,i:Index)->Index {
+    fn input(&self,i:InputIndex)->Index {
 	self.get(&Term::Atom(Atom::Var(i)))
     }
     fn binop(&self,op:Op,a:Index,b:Index)->Index {
@@ -400,5 +400,11 @@ impl GateSoup for Bracket {
     }
     fn one(&self)->Index {
 	self.get(&Term::Atom(Atom::One))
+    }
+    fn as_input(&self,i:Index)->Option<InputIndex> {
+	match self.spec.borrow()[i as usize] {
+	    Term::Atom(Atom::Var(j)) => Some(j),
+	    _ => None
+	}
     }
 }

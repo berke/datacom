@@ -3,6 +3,24 @@ use crate::gate_soup::{Op,GateSoup,Index};
 pub struct Register(Vec<Index>);
 
 impl Register {
+    pub fn dump<M:GateSoup>(mac:&M,path:&str,
+			    regs:Vec<(&str,&Register)>)-> Result<(),std::io::Error> {
+	use std::io::Write;
+	let fd = std::fs::File::create(path)?;
+	let mut fd = std::io::BufWriter::new(fd);
+
+	for (name,Register(u)) in regs.iter() {
+	    for i in 0..u.len() {
+		match mac.as_input(u[i]) {
+		    None => panic!("Register bit {} of {} not an input",i,name),
+		    Some(j) => writeln!(fd,"{} {} {}",name,i,j)?
+		}
+	    }
+	}
+
+	Ok(())
+    }
+	
     pub fn input<M:GateSoup>(mac:&mut M,n:Index)->Self {
 	Register( (0..n).map(|k| mac.new_input()).collect() )
     }

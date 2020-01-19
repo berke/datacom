@@ -67,7 +67,7 @@ fn f0(x:u32)->u32 {
 }
 
 fn f0_xtea(x:u32)->u32 {
-    xtea::encipher((0xdeadbeef,0x0badcafe),[x,x,x,x]).0 & (M - 1) as u32
+    xtea::encipher((0xdeadbeef,0x0badcafe),[x,x,x,x],32).0 & (M - 1) as u32
 }
 
 fn check_period() {
@@ -131,7 +131,7 @@ impl Table {
 	    }
 	    // let mut k0 : u32 = (xw.next() ^ i as u32) % M as u32;
 	    loop {
-		let kk = jn2(xtea::encipher(sp(ctr),[0x12345678,0x9abcdef0,0x31415926,0x53581414]));
+		let kk = jn2(xtea::encipher(sp(ctr),[0x12345678,0x9abcdef0,0x31415926,0x53581414],32));
 		// let kk = ctr;
 		ctr += 1;
 		k0 = (kk % M) as u32;

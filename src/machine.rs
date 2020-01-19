@@ -1,11 +1,11 @@
 use std::collections::BTreeMap;
 use std::cell::{Cell,RefCell};
-use crate::gate_soup::{Index,Op,GateSoup};
+use crate::gate_soup::{InputIndex,Index,Op,GateSoup};
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum Gate {
     Zero,
-    Input(Index),
+    Input(InputIndex),
     Not(Index),
     Binop(Op,Index,Index)
 }
@@ -257,7 +257,7 @@ impl GateSoup for Machine {
 	self.n_input.set(i + 1);
 	self.get(&Gate::Input(i))
     }
-    fn input(&self,i:Index)->Index {
+    fn input(&self,i:InputIndex)->Index {
 	self.get(&Gate::Input(i))
     }
     fn binop(&self,op:Op,a:Index,b:Index)->Index {
@@ -296,5 +296,11 @@ impl GateSoup for Machine {
     }
     fn one(&self)->Index {
 	self.not(self.zero())
+    }
+    fn as_input(&self,i:Index)->Option<InputIndex> {
+	match self.spec.borrow()[i as usize] {
+	    Gate::Input(j) => Some(j),
+	    _ => None
+	}
     }
 }
