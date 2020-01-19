@@ -5,11 +5,13 @@ mod gate_soup;
 mod register;
 mod machine;
 mod xorwow;
+mod bracket;
 
 use xorwow::Xorwow;
 use register::Register;
 use machine::Machine;
 use gate_soup::GateSoup;
+use bracket::Bracket;
 
 struct Traffic<T> {
     x:(T,T),
@@ -17,13 +19,16 @@ struct Traffic<T> {
 }
 
 const NROUND : usize = 3;
+const NTRAFFIC : usize = 1;
 
 fn main() {
     // let mut args = std::env::args().skip(1);
     // let path = &args.next().unwrap();
     // let params = args.map(|x| x.parse::<u32>().unwrap()).collect::<Vec<u32>>();
 
-    let mut mac = Machine::new();
+    //let mut mac = Machine::new();
+    let mut mac = Bracket::new();
+
     // let mut key1 = Register::input(&mut mac,0,32);
     // let mut key2 = Register::input(&mut mac,32,32);
     // let mut x = Register::input(&mut mac,64,32);
@@ -45,7 +50,7 @@ fn main() {
     let key = [k0,k1,k2,k3];
 
     // Generate
-    let n = 256;
+    let n = NTRAFFIC;
     let mut traffic = Vec::new();
     for i in 0..n {
 	let x0 = xw.next();
@@ -168,8 +173,8 @@ fn main() {
     }).collect();
 
     out_constraints.append(&mut constraints.clone());
-    mac.save_cnf("mac.cnf",&out_constraints).unwrap();
-    // mac.dump();
+    //mac.save_cnf("mac.cnf",&out_constraints).unwrap();
+    mac.dump();
 
     for k in 0..4 {
 	constraints.append(&mut key_r[k].constraints(key[k] as u64));

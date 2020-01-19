@@ -288,4 +288,7 @@ impl GateSoup for Machine {
     fn zero(&self)->Index {
 	self.get(&Gate::Zero)
     }
+    fn one(&self)->Index {
+	self.not(self.zero())
+    }
 }
