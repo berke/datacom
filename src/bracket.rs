@@ -1,5 +1,6 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap,BTreeSet};
 use std::cell::{Cell,RefCell};
+use std::rc::Rc;
 use crate::gate_soup::{Index,Op,GateSoup};
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -31,23 +32,24 @@ enum Ummo {
     Bullshit
 }
 
-pub trait Morphism : Clone + Copy {
-    type T : Clone + Copy;
-    fn zero(self)->Self::T;
-    fn one(self)->Self::T;
-    fn add(self,a:Self::T,b:Self::T)->Self::T;
-    fn mul(self,a:Self::T,b:Self::T)->Self::T;
+pub trait Morphism {
+    type T : Clone;
+    fn zero(&self)->Self::T;
+    fn one(&self)->Self::T;
+    fn input(&self,i:Index)->Self::T;
+    fn add(&self,a:Self::T,b:Self::T)->Self::T;
+    fn mul(&self,a:Self::T,b:Self::T)->Self::T;
 }
 
-#[derive(Clone,Copy)]
 pub struct StandardMorphism { }
 
 impl Morphism for StandardMorphism {
     type T = bool;
-    fn zero(self)->Self::T { false }
-    fn one(self)->Self::T { true }
-    fn add(self,a:Self::T,b:Self::T)->Self::T { a ^ b }
-    fn mul(self,a:Self::T,b:Self::T)->Self::T { a & b }
+    fn zero(&self)->Self::T { false }
+    fn one(&self)->Self::T { true }
+    fn input(&self,i:Index)->Self::T { panic!("Undefined input") }
+    fn add(&self,a:Self::T,b:Self::T)->Self::T { a ^ b }
+    fn mul(&self,a:Self::T,b:Self::T)->Self::T { a & b }
 }
 
 impl StandardMorphism {
@@ -56,21 +58,118 @@ impl StandardMorphism {
     }
 }
 
-
-#[derive(Clone,Copy)]
 pub struct SizeMorphism { }
 
 impl Morphism for SizeMorphism {
     type T = f64;
-    fn zero(self)->Self::T { 1.0 }
-    fn one(self)->Self::T { 1.0 }
-    fn add(self,a:Self::T,b:Self::T)->Self::T { a + b }
-    fn mul(self,a:Self::T,b:Self::T)->Self::T { a + b }
+    fn zero(&self)->Self::T { 1.0 }
+    fn one(&self)->Self::T { 1.0 }
+    fn input(&self,i:Index)->Self::T { 1.0 }
+    fn add(&self,a:Self::T,b:Self::T)->Self::T { a + b }
+    fn mul(&self,a:Self::T,b:Self::T)->Self::T { a + b }
 }
 
 impl SizeMorphism {
     pub fn new()->Self {
 	SizeMorphism{ }
+    }
+}
+
+pub struct InputSetMorphism { }
+
+impl Morphism for InputSetMorphism {
+    type T = u128;
+    fn zero(&self)->Self::T { 0 }
+    fn one(&self)->Self::T { 0 }
+    fn input(&self,i:Index)->Self::T { println!("I{}",i); 1 << i }
+    fn add(&self,a:Self::T,b:Self::T)->Self::T { a | b }
+    fn mul(&self,a:Self::T,b:Self::T)->Self::T { a | b }
+}
+
+impl InputSetMorphism {
+    pub fn new()->Self {
+	InputSetMorphism{ }
+    }
+}
+
+pub struct TrimmedMorphism { mw:u32 }
+
+impl Morphism for TrimmedMorphism {
+    type T = (bool,Rc<BTreeSet<u128>>);
+    fn zero(&self)->Self::T { (false,Rc::new(BTreeSet::new())) }
+    fn one(&self)->Self::T { (true,Rc::new(BTreeSet::new())) }
+    fn input(&self,i:Index)->Self::T {
+	let mut bt = BTreeSet::new();
+	bt.insert(1 << i);
+	(false,Rc::new(bt))
+    }
+    fn add(&self,a:Self::T,b:Self::T)->Self::T {
+	let c = a.1.symmetric_difference(&b.1).cloned().collect();
+	(a.0^b.0,Rc::new(c))
+    }
+    fn mul(&self,a:Self::T,b:Self::T)->Self::T {
+	println!("{}",a.1.len());
+	let mut c = (*(a.1)).clone();
+	for &ai in a.1.iter() {
+	    for &bi in b.1.iter() {
+		let ci = ai | bi;
+		if ci.count_ones() <= self.mw {
+		    if c.contains(&ci) {
+			c.remove(&ci);
+		    } else {
+			c.insert(ci);
+		    }
+		}
+	    }
+	}
+	if a.0 {
+	    c.append(&mut (*(b.1)).clone());
+	}
+	if b.0 {
+	    c.append(&mut (*(a.1)).clone());
+	}
+	let mut d = BTreeSet::new();
+	for &ci in c.iter() {
+	    if ci.count_ones() <= self.mw {
+		d.insert(ci);
+	    }
+	}
+	(a.0 & b.0,Rc::new(d))
+	// (1 + a)(1 + b) = 1 + b + a + ab
+	// a(1 + b) = a + ab
+	// (1 + a)b = b + ab
+	// ab = ab
+    }
+}
+
+impl TrimmedMorphism {
+    pub fn new(mw:u32)->Self {
+	TrimmedMorphism{ mw }
+    }
+    pub fn dump(&self,a:&<TrimmedMorphism as Morphism>::T) {
+	let mut first = true;
+	if a.0 {
+	    print!("1");
+	    first = false;
+	}
+	for ai in a.1.iter() {
+	    if !first {
+		print!(" + ");
+	    } else {
+		first = false;
+	    }
+	    let mut x = *ai;
+	    loop {
+		let n = x.trailing_zeros();
+		if n < 128 {
+		    print!("x{}",n);
+		    x &= !(1 << n);
+		} else {
+		    break;
+		}
+	    }
+	}
+	println!("");
     }
 }
 
@@ -99,35 +198,47 @@ impl Bracket {
 	}
     }
 
-    pub fn eval_inner_morphism<M:Morphism>(&self,inputs:&Vec<M::T>,busy:&mut Vec<bool>,done:&mut Vec<bool>,
+    pub fn eval_inner_morphism<M:Morphism>(&self,
+					   defined:&Vec<bool>,
+					   inputs:&Vec<bool>,
+					   busy:&mut Vec<bool>,done:&mut Vec<bool>,
 		  value:&mut Vec<M::T>,i:Index,phi:&M)->M::T {
 	let i = i as usize;
 	if busy[i] {
 	    panic!("Circular dependency involving gate {}",i);
 	}
 	if done[i] {
-	    return value[i];
+	    return value[i].clone();
 	}
 	busy[i] = true;
 	let x =
 	    match self.spec.borrow()[i] {
 		Term::Atom(Atom::Zero) => phi.zero(),
 		Term::Atom(Atom::One) => phi.one(),
-		Term::Atom(Atom::Var(j)) => inputs[j as usize],
+		Term::Atom(Atom::Var(j)) =>
+		    if defined[j as usize] {
+			if inputs[j as usize] {
+			    phi.one()
+			} else {
+			    phi.zero()
+			}
+		    } else {
+			phi.input(j)
+		    }
 		Term::Add(j1,j2) => {
-		    let x1 = self.eval_inner_morphism(inputs,busy,done,value,j1,phi);
-		    let x2 = self.eval_inner_morphism(inputs,busy,done,value,j2,phi);
+		    let x1 = self.eval_inner_morphism(defined,inputs,busy,done,value,j1,phi);
+		    let x2 = self.eval_inner_morphism(defined,inputs,busy,done,value,j2,phi);
 		    phi.add(x1,x2)
 		},
 		Term::Mul(j1,j2) => {
-		    let x1 = self.eval_inner_morphism(inputs,busy,done,value,j1,phi);
-		    let x2 = self.eval_inner_morphism(inputs,busy,done,value,j2,phi);
+		    let x1 = self.eval_inner_morphism(defined,inputs,busy,done,value,j1,phi);
+		    let x2 = self.eval_inner_morphism(defined,inputs,busy,done,value,j2,phi);
 		    phi.mul(x1,x2)
 		},
-		Term::Term(j) => self.eval_inner_morphism(inputs,busy,done,value,j,phi)
+		Term::Term(j) => self.eval_inner_morphism(defined,inputs,busy,done,value,j,phi)
 	    };
 	done[i] = true;
-	value[i] = x;
+	value[i] = x.clone();
 	busy[i] = false;
 	x
     }
@@ -138,8 +249,7 @@ impl Bracket {
 	let mut defined = Vec::new();
 	let spec = self.spec.borrow();
 	let m = spec.len();
-	let zero = phi.zero();
-	inputs.resize(n,zero);
+	inputs.resize(n,false);
 	defined.resize(n,false);
 	let mut n_ign_constr = 0;
 	for &(i,b) in constraints.iter() {
@@ -151,7 +261,7 @@ impl Bracket {
 			println!("Multiply defined input {}",i)
 		    } else {
 			defined[j] = true;
-			inputs[j] = if b { phi.one() } else { phi.zero() };
+			inputs[j] = b;
 		    }
 		},
 		_ => n_ign_constr += 1
@@ -160,19 +270,15 @@ impl Bracket {
 	if n_ign_constr > 0 {
 	    println!("Warning: Number of ignored constraints on non-input gates: {}",n_ign_constr);
 	}
-	for i in 0..n {
-	    if !defined[i] {
-		panic!("Input {} not defined",i);
-	    }
-	}
 	let mut busy = Vec::new();
 	let mut done = Vec::new();
 	let mut value = Vec::new();
 	busy.resize(m,false);
 	done.resize(m,false);
+	let zero = phi.zero();
 	value.resize(m,zero);
 	for i in 0..m {
-	    let _ = self.eval_inner_morphism(&inputs,&mut busy,&mut done,&mut value,i as Index,phi);
+	    let _ = self.eval_inner_morphism(&defined,&inputs,&mut busy,&mut done,&mut value,i as Index,phi);
 	};
 	value
     }

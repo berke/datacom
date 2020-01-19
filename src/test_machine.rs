@@ -18,7 +18,8 @@ struct Traffic<T> {
     y:(T,T)
 }
 
-const NROUND : usize = 3;
+const NROUND : usize = 1;
+//const NROUND : usize = 32;
 const NTRAFFIC : usize = 1;
 
 fn main() {
@@ -190,6 +191,12 @@ fn main() {
 	}
     }
 
+    let trimo = bracket::TrimmedMorphism::new(5);
+    let trimos = mac.eval_morphism(&out_constraints,&trimo);
+
+    let inp = bracket::InputSetMorphism::new();
+    let inps = mac.eval_morphism(&out_constraints,&inp);
+
     let v = mac.eval(&constraints);
 
     for k in 0..4 {
@@ -205,5 +212,12 @@ fn main() {
 		 tri.x.0.value(&v),tri.x.1.value(&v),
 		 ti.y.0,ti.y.1,
 		 tri.y.0.value(&v),tri.y.1.value(&v));
+	for j in 0..32 {
+	    let b0 = tri.y.0.bit(j);
+	    let b1 = tri.y.1.bit(j);
+	    println!("Y0[{:02}] : {:0128b}",j,inps[b0 as usize]);
+	    println!("Y1[{:02}] : {:0128b}",j,inps[b1 as usize]);
+	    trimo.dump(&trimos[b0 as usize]);
+	}
     }
 }
