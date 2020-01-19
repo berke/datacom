@@ -25,7 +25,7 @@ pub struct Bracket {
     n_input:Cell<Index>
 }
 
-enum Ummo {
+pub enum Ummo {
     Yes,
     No,
     Maybe,
@@ -47,7 +47,7 @@ impl Morphism for StandardMorphism {
     type T = bool;
     fn zero(&self)->Self::T { false }
     fn one(&self)->Self::T { true }
-    fn input(&self,i:Index)->Self::T { panic!("Undefined input") }
+    fn input(&self,i:Index)->Self::T { panic!("Undefined input {}",i) }
     fn add(&self,a:Self::T,b:Self::T)->Self::T { a ^ b }
     fn mul(&self,a:Self::T,b:Self::T)->Self::T { a & b }
 }
@@ -64,7 +64,7 @@ impl Morphism for SizeMorphism {
     type T = f64;
     fn zero(&self)->Self::T { 1.0 }
     fn one(&self)->Self::T { 1.0 }
-    fn input(&self,i:Index)->Self::T { 1.0 }
+    fn input(&self,_i:Index)->Self::T { 1.0 }
     fn add(&self,a:Self::T,b:Self::T)->Self::T { a + b }
     fn mul(&self,a:Self::T,b:Self::T)->Self::T { a + b }
 }
@@ -355,7 +355,6 @@ impl GateSoup for Bracket {
 	    match (self.is_one(a),self.is_one(b)) {
 		(Ummo::Yes,_) => b,
 		(_,Ummo::Yes) => a,
-		(Ummo::Yes,Ummo::Yes) => a,
 		(Ummo::No,_)|(_,Ummo::No) => self.zero(),
 		(_,_) => self.get(&Term::Mul(a,b))
 	    }

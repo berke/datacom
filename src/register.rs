@@ -3,7 +3,7 @@ use crate::gate_soup::{Op,GateSoup,Index};
 pub struct Register(Vec<Index>);
 
 impl Register {
-    pub fn dump<M:GateSoup>(mac:&M,path:&str,
+    pub fn dump<M:GateSoup>(_mac:&M,path:&str,
 			    regs:Vec<(&str,&Register)>)-> Result<(),std::io::Error> {
 	use std::io::Write;
 	let fd = std::fs::File::create(path)?;
@@ -11,10 +11,12 @@ impl Register {
 
 	for (name,Register(u)) in regs.iter() {
 	    for i in 0..u.len() {
-		match mac.as_input(u[i]) {
-		    None => panic!("Register bit {} of {} not an input",i,name),
-		    Some(j) => writeln!(fd,"{} {} {}",name,i,j)?
-		}
+		let j = u[i];
+		writeln!(fd,"{} {} {}",name,i,j)?
+		// match mac.as_input(u[i]) {
+		//     None => panic!("Register bit {} of {} not an input",i,name),
+		//     Some(j) => writeln!(fd,"{} {} {}",name,i,j)?
+		// }
 	    }
 	}
 
@@ -22,7 +24,7 @@ impl Register {
     }
 	
     pub fn input<M:GateSoup>(mac:&mut M,n:Index)->Self {
-	Register( (0..n).map(|k| mac.new_input()).collect() )
+	Register( (0..n).map(|_k| mac.new_input()).collect() )
     }
 
     pub fn rotate_left(&self,s:usize)->Self {
@@ -51,7 +53,7 @@ impl Register {
 
     pub fn not<M:GateSoup>(&self,mac:&mut M)->Self {
 	let Register(u) = &self;
-	Register(u.iter().map(|(ui)| mac.not(*ui)).collect())
+	Register(u.iter().map(|ui| mac.not(*ui)).collect())
     }
 
     pub fn bit(&self,i:usize)->Index {
@@ -115,11 +117,11 @@ impl Register {
 	    0 => Register(vec![]),
 	    1 => Register(vec![mac.not(u[0]),u[0]]),
 	    n => {
-		let d1 = self.slice(1,n-1).decoder(mac);
-		let mut d = d1.scale(mac,u[0]);
-		let mut e = d1.scale(mac,mac.not(u[0]));
-		d.append(&mut e);
-		d
+		let d = self.slice(1,n-1).decoder(mac);
+		let mut d0 = d.scale(mac,mac.not(u[0]));
+		let mut d1 = d.scale(mac,u[0]);
+		d1.append(&mut d0);
+		d1
 	    }
 	}
     }

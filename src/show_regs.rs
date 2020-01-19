@@ -81,14 +81,14 @@ fn main()->Result<(),Box<dyn std::error::Error>> {
     let val = load_valuation(&sol_path)?;
     let regs = load_regs(&reg_path)?;
     for (reg,bits) in regs.iter() {
-	let mut q = 0;
+	let mut q : u64 = 0;
 	let n = bits.len();
 	for (i,j) in bits.iter() {
 	    if val[j] {
-		q |= 1 << i;
+		q |= 1_u64 << i;
 	    }
 	}
-	println!("{}[0..{}] : {:08X} {:032b}",reg,n,q,q);
+	println!("{}[0..{}] : {:08X} {:032b} -- {:02}",reg,n,q,q,q.count_ones());
     }
     Ok(())
 

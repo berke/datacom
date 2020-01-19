@@ -11,7 +11,7 @@ use xorwow::Xorwow;
 use register::Register;
 use machine::Machine;
 use gate_soup::GateSoup;
-use bracket::Bracket;
+// use bracket::Bracket;
 
 #[derive(Copy,Clone)]
 struct Traffic<T> {
@@ -53,7 +53,6 @@ fn main() {
     let key = [k0,k1,k2,k3];
 
     // Generate
-    let n = NTRAFFIC;
     let mut traffic = Vec::new();
     traffic.resize(NTRAFFIC,Traffic{ x:(0,0),y:(0,0) });
     let mut seen = Vec::new();
@@ -73,7 +72,7 @@ fn main() {
 	}
 	cnt += 1;
 	seen[x_pfx] = true;
-	println!("{:02X}",x_pfx);
+	// println!("{:02X}",x_pfx);
 	// let y0 = y0 + 1234578; // TO TEST
 	traffic[x_pfx] = Traffic{ x:(x0,x1),y:(y0,y1) };
     }
@@ -229,15 +228,20 @@ fn main() {
 
     out_constraints.append(&mut constraints.clone());
     mac.save_cnf("mac.cnf",&out_constraints).unwrap();
-    mac.dump("mac.gt");
+    mac.dump("mac.gt").unwrap();
 
     Register::dump(&mac,"mac.reg",
 		   vec![
+		       ("addr",&addr_r),
+		       ("x0",&x0_r),
+		       ("x1",&x1_r),
+		       ("y0",&y0_r),
+		       ("y1",&y1_r),
 		       ("k0",&key_r[0]),
 		       ("k1",&key_r[1]),
 		       ("k2",&key_r[2]),
 		       ("k3",&key_r[3])
-		   ]);
+		   ]).unwrap();
 
     // for k in 0..4 {
     // 	constraints.append(&mut key_r[k].constraints(key[k] as u64));
