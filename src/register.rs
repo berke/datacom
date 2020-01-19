@@ -31,6 +31,11 @@ impl Register {
 	Register(u.iter().zip(v.iter()).map(|(ui,vi)| mac.binop(op,*ui,*vi)).collect())
     }
 
+    pub fn not<M:GateSoup>(&self,mac:&mut M)->Self {
+	let Register(u) = &self;
+	Register(u.iter().map(|(ui)| mac.not(*ui)).collect())
+    }
+
     pub fn bit(&self,i:usize)->Index {
 	let Register(u) = &self;
 	let n = u.len();
@@ -163,5 +168,25 @@ impl Register {
 	    (w0,c0)
 	};
 	res
+    }
+
+    pub fn all_ones<M:GateSoup>(&self,mac:&mut M)->Index {
+	let Register(u) = &self;
+	let n = u.len();
+	match n {
+	    1 => u[0],
+	    2 => mac.and(u[0],u[1]),
+	    _ => {
+		let p = n / 2;
+		let q = n - p;
+		// self  ->   [u0 u1]
+		// other ->   [v0 v1]
+		let u0 = self.slice(0,p);
+		let u1 = self.slice(p,q);
+		let x0 = u0.all_ones(mac);
+		let x1 = u1.all_ones(mac);
+		mac.and(x0,x1)
+	    }
+	}
     }
 }
