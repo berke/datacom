@@ -41,10 +41,9 @@ uint32_t cpu_to_le32(uint32_t x) {
   return le32_to_cpu(x);
 }
 
-static void xtea_encrypt(struct xtea_ctx *ctx, uint8_t *dst, const uint8_t *src)
+static void xtea_encrypt(int rounds,struct xtea_ctx *ctx, uint8_t *dst, const uint8_t *src)
 {
   uint32_t y, z, sum = 0;
-  uint32_t limit = XTEA_DELTA * XTEA_ROUNDS;
   const uint32_t *in = (const uint32_t *)src;
   uint32_t *out = (uint32_t *)dst;
 
@@ -52,7 +51,7 @@ static void xtea_encrypt(struct xtea_ctx *ctx, uint8_t *dst, const uint8_t *src)
   z = le32_to_cpu(in[1]);
 
   int i = 0;
-  while (sum != limit) {
+  while (rounds --) {
     /* printf("ROUND %08X %08X %08X\n",sum,y,z); */
     y += ((z << 4 ^ z >> 5) + z) ^ (sum + ctx->KEY[sum&3]); 
     sum += XTEA_DELTA;
@@ -65,32 +64,38 @@ static void xtea_encrypt(struct xtea_ctx *ctx, uint8_t *dst, const uint8_t *src)
 }
 
 int main(int argc, const char **argv) {
-  uint32_t w[6];
+  uint32_t w[8];
   int i;
   struct xtea_ctx ctx;
   uint32_t x[2];
   uint32_t y[2];
+  int rounds;
+  uint32_t *wp;
 
-  if (argc != 7) {
-    fprintf(stderr,"usage: %s key1 key2 key3 key4 plain1 plain2 (6 32-bit hexadecimal words)\n",
+  if (argc != 1 + sizeof(w)/sizeof(*w)) {
+    fprintf(stderr,"usage: %s rounds key1 key2 key3 key4 plain1 plain2 (6 32-bit hexadecimal words)\n",
 	    argv[0]);
     exit(EXIT_FAILURE);
   }
 
-  for (i = 0; i<6; i ++) {
+  for (i = 0; i<sizeof(w)/sizeof(*w); i ++) {
     if (1 != sscanf(argv[1 + i],"%08x",w+i)) {
       fprintf(stderr,"%s: error in argument %d (%s)\n",argv[0],1+i,argv[1+i]);
       exit(EXIT_FAILURE);
     }
   }
 
+  wp = w;
+
+  rounds = *(wp ++);
+  
   for (i = 0; i<4; i ++) {
-    ctx.KEY[i] = w[i];
+    ctx.KEY[i] = *(wp ++);
   }
 
-  x[0] = w[4];
-  x[1] = w[5];
-  xtea_encrypt(&ctx, (uint8_t *) y, (const uint8_t *) x);
+  x[0] = *(wp ++);
+  x[1] = *(wp ++);
+  xtea_encrypt(rounds, &ctx, (uint8_t *) y, (const uint8_t *) x);
 
   printf("XTEA_[%08X %08X %08X %08X](%08X %08X)=%08X %08X\n",
 	 ctx.KEY[0],

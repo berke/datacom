@@ -10,9 +10,10 @@ impl Register {
 	let mut fd = std::io::BufWriter::new(fd);
 
 	for (name,Register(u)) in regs.iter() {
-	    for i in 0..u.len() {
+	    let n = u.len();
+	    for i in 0..n {
 		let j = u[i];
-		writeln!(fd,"{} {} {}",name,i,j)?
+		writeln!(fd,"{} {} {}",name,n - 1 - i,j)?
 		// match mac.as_input(u[i]) {
 		//     None => panic!("Register bit {} of {} not an input",i,name),
 		//     Some(j) => writeln!(fd,"{} {} {}",name,i,j)?

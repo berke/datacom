@@ -57,9 +57,9 @@ fn load_valuation(path:&str)->Result<BTreeMap<u32,bool>,std::io::Error> {
 				    Err(_) => println!("Warning: Bad integer {:?}",k),
 				    Ok(k) => {
 					if k < 0 {
-					    val.insert((-k) as u32,false);
+					    val.insert((-k-1) as u32,false);
 					} else {
-					    val.insert(k as u32,true);
+					    val.insert((k-1) as u32,true);
 					}
 				    }
 				}
@@ -82,17 +82,36 @@ fn main()->Result<(),Box<dyn std::error::Error>> {
     let regs = load_regs(&reg_path)?;
     for (reg,bits) in regs.iter() {
 	let mut q : u64 = 0;
-	let n = bits.len();
-	for (i,j) in bits.iter() {
-	    if val[j] {
-		q |= 1_u64 << i;
+	let n = bits.len() as u32;
+	if n <= 64 {
+	    for (i,j) in bits.iter() {
+		match val.get(j) {
+		    Some(true) => q |= 1_u64 << i,
+		    Some(false) => (),
+		    None => panic!("Register {} bit {} gate {} undefined",reg,i,j)
+		}
 	    }
+	    println!("{}[{}..0] : {:0w1$X} {:0w2$b} | {:w3$} -- {:3}",
+		     reg,n,q,q,q,q.count_ones(),
+		     w1=((n+3)/4) as usize,
+		     w2=n as usize,
+		     w3=((10*n)/33) as usize);
+	} else {
+	    let mut nl = true;
+	    let c = 32;
+	    for k in 0..n {
+		let i = n - 1 - k;
+		if k % 32 == 0 {
+		    if k > 0 {
+			println!("");
+		    }
+		    print!("{}[{:02X}..] ",reg,i);
+		}
+		let j = bits.get(&i).unwrap();
+		print!("{}", if val[j] { 1 } else { 0 });
+	    }
+	    println!("");
 	}
-	println!("{}[0..{}] : {:08X} {:032b} -- {:02}",reg,n,q,q,q.count_ones());
     }
     Ok(())
-
-    // let reg_path = std::env::args().nth(2).unwrap();
-    // let reg_fd = std::fs::File::open(sol_path).unwrap();
-    // let mut reg_fd = std::io::BufReader::new(sol_fd);
 }

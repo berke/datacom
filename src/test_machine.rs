@@ -20,8 +20,8 @@ struct Traffic<T> {
 }
 
 // const NROUND : usize = 1;
-const NROUND : usize = 5;
-const NTRAFFIC_BIT : usize = 8;
+const NROUND : usize = 1; // 5 works!
+const NTRAFFIC_BIT : usize = 4;
 const NTRAFFIC : usize = 1 << NTRAFFIC_BIT;
 
 fn main() {
@@ -45,11 +45,15 @@ fn main() {
     // }
     // mac.dump();
     let mut xw = Xorwow::new(129837471234567);
-    let helper = 0xffffffff;
-    let k0 = xw.next() & helper;
-    let k1 = xw.next() & helper;
-    let k2 = xw.next() & helper;
-    let k3 = xw.next() & helper;
+    let helper = 0xffffffff_u32;
+    // let k0 = xw.next() & helper;
+    // let k1 = xw.next() & helper;
+    // let k2 = xw.next() & helper;
+    // let k3 = xw.next() & helper;
+    let k0 = 0xff111111_u32;
+    let k1 = 0x22222222_u32;
+    let k2 = 0x44444444_u32;
+    let k3 = 0x8888ffff_u32;
     let key = [k0,k1,k2,k3];
 
     // Generate
@@ -97,6 +101,9 @@ fn main() {
     // let not = |x| mac.not(x);
 
     let addr_r = Register::input(&mut mac,NTRAFFIC_BIT as u32);
+
+    constraints.append(&mut addr_r.constraints(0xe2 as u64));
+
     let demux_r = addr_r.decoder(&mut mac);
     let r = 32 - NTRAFFIC_BIT as u32;
     let mut x0_total_r = Register::input(&mut mac,32);
@@ -106,24 +113,26 @@ fn main() {
     for pfx in 0..NTRAFFIC {
 	let Traffic{ x:(x0,x1),y:(y0,y1) } = traffic[pfx];
 
+	let d = demux_r.bit(pfx);
+
 	let x0_r = Register::input(&mut mac,32);
 	constraints.append(&mut x0_r.constraints(x0 as u64));
-	let x0_r = x0_r.scale(&mut mac,demux_r.bit(pfx));
+	let x0_r = x0_r.scale(&mut mac,d);
 	x0_total_r = x0_total_r.or(&mut mac,&x0_r);
 
 	let x1_r = Register::input(&mut mac,r);
 	constraints.append(&mut x1_r.constraints((x1 >> NTRAFFIC_BIT) as u64));
-	let x1_r = x1_r.scale(&mut mac,demux_r.bit(pfx));
+	let x1_r = x1_r.scale(&mut mac,d);
 	x1_left_total_r = x1_left_total_r.or(&mut mac,&x1_r);
 
 	let y0_r = Register::input(&mut mac,32);
 	constraints.append(&mut y0_r.constraints(y0 as u64));
-	let y0_r = y0_r.scale(&mut mac,demux_r.bit(pfx));
+	let y0_r = y0_r.scale(&mut mac,d);
 	y0_total_r = y0_total_r.or(&mut mac,&y0_r);
 
 	let y1_r = Register::input(&mut mac,r);
 	constraints.append(&mut y1_r.constraints((y1 >> NTRAFFIC_BIT) as u64));
-	let y1_r = y1_r.scale(&mut mac,demux_r.bit(pfx));
+	let y1_r = y1_r.scale(&mut mac,d);
 	y1_left_total_r = y1_left_total_r.or(&mut mac,&y1_r);
     }
 
@@ -232,7 +241,6 @@ fn main() {
 
     Register::dump(&mac,"mac.reg",
 		   vec![
-		       ("addr",&addr_r),
 		       ("x0",&x0_r),
 		       ("x1",&x1_r),
 		       ("y0",&y0_r),
@@ -240,7 +248,9 @@ fn main() {
 		       ("k0",&key_r[0]),
 		       ("k1",&key_r[1]),
 		       ("k2",&key_r[2]),
-		       ("k3",&key_r[3])
+		       ("k3",&key_r[3]),
+		       ("addr",&addr_r),
+		       ("demux",&demux_r)
 		   ]).unwrap();
 
     // for k in 0..4 {
