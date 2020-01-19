@@ -10,7 +10,7 @@ pub enum Op {
 
 pub trait GateSoup {
     fn eval(&self,constraints:&Vec<(Index,bool)>)->Vec<bool>;
-    fn dump(&self);
+    fn dump(&self,path:&str)->Result<(),std::io::Error>;
     fn input(&self,i:Index)->Index;
     fn new_input(&mut self)->Index;
     fn num_inputs(&self)->usize;

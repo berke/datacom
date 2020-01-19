@@ -307,20 +307,24 @@ impl GateSoup for Bracket {
 	let phi = StandardMorphism::new();
 	self.eval_morphism(constraints,&phi)
     }
-    fn dump(&self) {
+    fn dump(&self,path:&str)->Result<(),std::io::Error> {
+	use std::io::Write;
+	let fd = std::fs::File::create(path)?;
+	let mut fd = std::io::BufWriter::new(fd);
 	let spec = self.spec.borrow();
 	for i in 0..spec.len() {
-	    print!("t{} = ",i);
+	    write!(fd,"t{} = ",i)?;
 	    let v = &spec[i];
 	    match v {
-		Term::Atom(Atom::Zero) => println!("0"),
-		Term::Atom(Atom::One) => println!("1"),
-		Term::Atom(Atom::Var(i)) => println!("x{}",i),
-		Term::Term(i) => println!("t{}",i),
-		Term::Add(i,j) => println!("t{} + t{}",i,j),
-		Term::Mul(i,j) => println!("t{}*t{}",i,j),
+		Term::Atom(Atom::Zero) => writeln!(fd,"0")?,
+		Term::Atom(Atom::One) => writeln!(fd,"1")?,
+		Term::Atom(Atom::Var(i)) => writeln!(fd,"x{}",i)?,
+		Term::Term(i) => writeln!(fd,"t{}",i)?,
+		Term::Add(i,j) => writeln!(fd,"t{} + t{}",i,j)?,
+		Term::Mul(i,j) => writeln!(fd,"t{}*t{}",i,j)?,
 	    }
 	}
+	Ok(())
     }
 
     fn num_inputs(&self)->usize {

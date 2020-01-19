@@ -230,20 +230,24 @@ impl GateSoup for Machine {
 	};
 	value
     }
-    fn dump(&self) {
+    fn dump(&self,path:&str)->Result<(),std::io::Error> {
+	use std::io::Write;
+	let fd = std::fs::File::create(path)?;
+	let mut fd = std::io::BufWriter::new(fd);
 	let spec = self.spec.borrow();
 	for i in 0..spec.len() {
-	    print!("x{} <- ",i+1);
+	    write!(fd,"x{} <- ",i)?;
 	    let v = &spec[i];
 	    match v {
-		Gate::Zero => println!("0"),
-		Gate::Input(i) => println!("INPUT({})",i),
-		Gate::Not(i) => println!("!x{}",i),
-		Gate::Binop(Op::And,i,j) => println!("x{} & x{}",i,j),
-		Gate::Binop(Op::Or,i,j) => println!("x{} | x{}",i,j),
-		Gate::Binop(Op::Xor,i,j) => println!("x{} ^ x{}",i,j)
+		Gate::Zero => writeln!(fd,"0")?,
+		Gate::Input(i) => writeln!(fd,"INPUT({})",i)?,
+		Gate::Not(i) => writeln!(fd,"!x{}",i)?,
+		Gate::Binop(Op::And,i,j) => writeln!(fd,"x{} & x{}",i,j)?,
+		Gate::Binop(Op::Or,i,j) => writeln!(fd,"x{} | x{}",i,j)?,
+		Gate::Binop(Op::Xor,i,j) => writeln!(fd,"x{} ^ x{}",i,j)?
 	    }
 	}
+	Ok(())
     }
     fn num_inputs(&self)->usize {
 	self.n_input.get() as usize

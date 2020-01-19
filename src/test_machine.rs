@@ -13,22 +13,24 @@ use machine::Machine;
 use gate_soup::GateSoup;
 use bracket::Bracket;
 
+#[derive(Copy,Clone)]
 struct Traffic<T> {
     x:(T,T),
     y:(T,T)
 }
 
-const NROUND : usize = 1;
-//const NROUND : usize = 32;
-const NTRAFFIC : usize = 1;
+// const NROUND : usize = 1;
+const NROUND : usize = 32;
+const NTRAFFIC_BIT : usize = 8;
+const NTRAFFIC : usize = 1 << NTRAFFIC_BIT;
 
 fn main() {
     // let mut args = std::env::args().skip(1);
     // let path = &args.next().unwrap();
     // let params = args.map(|x| x.parse::<u32>().unwrap()).collect::<Vec<u32>>();
 
-    //let mut mac = Machine::new();
-    let mut mac = Bracket::new();
+    let mut mac = Machine::new();
+    // let mut mac = Bracket::new();
 
     // let mut key1 = Register::input(&mut mac,0,32);
     // let mut key2 = Register::input(&mut mac,32,32);
@@ -53,14 +55,32 @@ fn main() {
     // Generate
     let n = NTRAFFIC;
     let mut traffic = Vec::new();
-    for i in 0..n {
+    traffic.resize(NTRAFFIC,Traffic{ x:(0,0),y:(0,0) });
+    let mut seen = Vec::new();
+    seen.resize(NTRAFFIC,false);
+    let mut cnt = 0;
+    loop {
+	if cnt == NTRAFFIC {
+	    break;
+	}
 	let x0 = xw.next();
 	let x1 = xw.next();
 	let (y0,y1) = xtea::encipher((x0,x1),key,NROUND);
+	let y_pfx = y1 as usize & ((1 << NTRAFFIC_BIT) - 1);
+	let x_pfx = x1 as usize & ((1 << NTRAFFIC_BIT) - 1);
+	if x_pfx != y_pfx || seen[x_pfx] {
+	    continue;
+	}
+	cnt += 1;
+	seen[x_pfx] = true;
+	println!("{:02X}",x_pfx);
 	// let y0 = y0 + 1234578; // TO TEST
-	traffic.push(Traffic{ x:(x0,x1),y:(y0,y1) });
-	println!("DIRECT TR{}: {:08X} {:08X} {:08X} {:08X} {:08X} {:08X} -> {:08X},{:08X}",
-		 i,k0,k1,k2,k3,x0,x1,y0,y1);
+	traffic[x_pfx] = Traffic{ x:(x0,x1),y:(y0,y1) };
+    }
+    for pfx in 0..NTRAFFIC {
+	let Traffic{ x:(x0,x1),y:(y0,y1) } = traffic[pfx];
+	println!("DIRECT {:04X}: {:08X} {:08X} {:08X} {:08X} {:08X} {:08X} -> {:08X},{:08X}",
+		 pfx,k0,k1,k2,k3,x0,x1,y0,y1);
     }
 
     let k0_r = Register::input(&mut mac,32);
@@ -174,8 +194,8 @@ fn main() {
     }).collect();
 
     out_constraints.append(&mut constraints.clone());
-    //mac.save_cnf("mac.cnf",&out_constraints).unwrap();
-    mac.dump();
+    mac.save_cnf("mac.cnf",&out_constraints).unwrap();
+    mac.dump("mac.gt");
 
     for k in 0..4 {
 	constraints.append(&mut key_r[k].constraints(key[k] as u64));
@@ -183,19 +203,21 @@ fn main() {
 
     println!("Evaluating...");
 
-    if false {
-	let sz = bracket::SizeMorphism::new();
-	let s = mac.eval_morphism(&constraints,&sz);
-	for i in 0..s.len() {
-	    println!("{:05} {:5.1}",i,s[i].log2());
-	}
-    }
+    // if false {
+    // 	let sz = bracket::SizeMorphism::new();
+    // 	let s = mac.eval_morphism(&constraints,&sz);
+    // 	for i in 0..s.len() {
+    // 	    println!("{:05} {:5.1}",i,s[i].log2());
+    // 	}
+    // }
 
-    let trimo = bracket::TrimmedMorphism::new(5);
-    let trimos = mac.eval_morphism(&out_constraints,&trimo);
+    // if false {
+    // 	let trimo = bracket::TrimmedMorphism::new(5);
+    // 	let trimos = mac.eval_morphism(&out_constraints,&trimo);
+    // }
 
-    let inp = bracket::InputSetMorphism::new();
-    let inps = mac.eval_morphism(&out_constraints,&inp);
+    // let inp = bracket::InputSetMorphism::new();
+    // let inps = mac.eval_morphism(&out_constraints,&inp);
 
     let v = mac.eval(&constraints);
 
@@ -212,12 +234,12 @@ fn main() {
 		 tri.x.0.value(&v),tri.x.1.value(&v),
 		 ti.y.0,ti.y.1,
 		 tri.y.0.value(&v),tri.y.1.value(&v));
-	for j in 0..32 {
-	    let b0 = tri.y.0.bit(j);
-	    let b1 = tri.y.1.bit(j);
-	    println!("Y0[{:02}] : {:0128b}",j,inps[b0 as usize]);
-	    println!("Y1[{:02}] : {:0128b}",j,inps[b1 as usize]);
-	    trimo.dump(&trimos[b0 as usize]);
-	}
+	// for j in 0..32 {
+	//     let b0 = tri.y.0.bit(j);
+	//     let b1 = tri.y.1.bit(j);
+	//     println!("Y0[{:02}] : {:0128b}",j,inps[b0 as usize]);
+	//     println!("Y1[{:02}] : {:0128b}",j,inps[b1 as usize]);
+	//     // trimo.dump(&trimos[b0 as usize]);
+	// }
     }
 }

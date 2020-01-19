@@ -86,6 +86,21 @@ impl Register {
 	q
     }
 
+    pub fn decoder<M:GateSoup>(&self,mac:&mut M)->Self {
+	let Register(u) = &self;
+	match u.len() {
+	    0 => Register(vec![]),
+	    1 => Register(vec![mac.not(u[0]),u[0]]),
+	    n => {
+		let d1 = self.slice(1,n-1).decoder(mac);
+		let mut d = d1.scale(mac,u[0]);
+		let mut e = d1.scale(mac,mac.not(u[0]));
+		d.append(&mut e);
+		d
+	    }
+	}
+    }
+
     pub fn add<M:GateSoup>(&self,mac:&mut M,other:&Self,carry:Index)->(Self,Index) {
 	let Register(u) = &self;
 	let Register(v) = &other;
