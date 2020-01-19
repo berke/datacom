@@ -1,11 +1,15 @@
 #![allow(dead_code)]
 
 mod xtea;
+mod gate_soup;
+mod register;
 mod machine;
 mod xorwow;
 
 use xorwow::Xorwow;
-use machine::{AbstractMachine,Machine,Register};
+use register::Register;
+use machine::Machine;
+use gate_soup::GateSoup;
 
 struct Traffic<T> {
     x:(T,T),
