@@ -20,8 +20,8 @@ struct Traffic<T> {
 }
 
 // const NROUND : usize = 1;
-const NROUND : usize = 1; // 5 works!
-const NTRAFFIC_BIT : usize = 4;
+const NROUND : usize = 6; // 5 works!
+const NTRAFFIC_BIT : usize = 8;
 const NTRAFFIC : usize = 1 << NTRAFFIC_BIT;
 
 fn main() {
@@ -102,14 +102,19 @@ fn main() {
 
     let addr_r = Register::input(&mut mac,NTRAFFIC_BIT as u32);
 
-    constraints.append(&mut addr_r.constraints(0xe2 as u64));
+    // constraints.append(&mut addr_r.constraints(0x7 as u64));
 
     let demux_r = addr_r.decoder(&mut mac);
     let r = 32 - NTRAFFIC_BIT as u32;
     let mut x0_total_r = Register::input(&mut mac,32);
+    constraints.append(&mut x0_total_r.constraints(0));
     let mut x1_left_total_r = Register::input(&mut mac,r);
+    constraints.append(&mut x1_left_total_r.constraints(0));
     let mut y0_total_r = Register::input(&mut mac,32);
+    constraints.append(&mut y0_total_r.constraints(0));
     let mut y1_left_total_r = Register::input(&mut mac,r);
+    constraints.append(&mut y1_left_total_r.constraints(0));
+    let mut traffic_r = Vec::new();
     for pfx in 0..NTRAFFIC {
 	let Traffic{ x:(x0,x1),y:(y0,y1) } = traffic[pfx];
 
@@ -134,6 +139,8 @@ fn main() {
 	constraints.append(&mut y1_r.constraints((y1 >> NTRAFFIC_BIT) as u64));
 	let y1_r = y1_r.scale(&mut mac,d);
 	y1_left_total_r = y1_left_total_r.or(&mut mac,&y1_r);
+
+	traffic_r.push(Traffic{ x:(x0_r,x1_r),y:(y0_r,y1_r) });
     }
 
     x1_left_total_r.append(&mut addr_r.clone());
@@ -239,19 +246,28 @@ fn main() {
     mac.save_cnf("mac.cnf",&out_constraints).unwrap();
     mac.dump("mac.gt").unwrap();
 
-    Register::dump(&mac,"mac.reg",
+    let mut reg_info =
 		   vec![
-		       ("x0",&x0_r),
-		       ("x1",&x1_r),
-		       ("y0",&y0_r),
-		       ("y1",&y1_r),
-		       ("k0",&key_r[0]),
-		       ("k1",&key_r[1]),
-		       ("k2",&key_r[2]),
-		       ("k3",&key_r[3]),
-		       ("addr",&addr_r),
-		       ("demux",&demux_r)
-		   ]).unwrap();
+		       ("x0".to_string(),&x0_r),
+		       ("x1".to_string(),&x1_r),
+		       ("y0".to_string(),&y0_r),
+		       ("y1".to_string(),&y1_r),
+		       ("k0".to_string(),&key_r[0]),
+		       ("k1".to_string(),&key_r[1]),
+		       ("k2".to_string(),&key_r[2]),
+		       ("k3".to_string(),&key_r[3]),
+		       ("addr".to_string(),&addr_r),
+		       ("demux".to_string(),&demux_r)
+		   ];
+    for pfx in 0..NTRAFFIC {
+	let Traffic{ x:(x0,x1),y:(y0,y1) } = &traffic_r[pfx];
+	reg_info.push((format!("tr_{:02X}_x0",pfx),&x0));
+	reg_info.push((format!("tr_{:02X}_x1",pfx),&x1));
+	reg_info.push((format!("tr_{:02X}_y0",pfx),&y0));
+	reg_info.push((format!("tr_{:02X}_y1",pfx),&y1));
+    }
+
+    Register::dump(&mac,"mac.reg",reg_info).unwrap();
 
     // for k in 0..4 {
     // 	constraints.append(&mut key_r[k].constraints(key[k] as u64));

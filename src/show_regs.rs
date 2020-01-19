@@ -95,7 +95,7 @@ fn main()->Result<(),Box<dyn std::error::Error>> {
 		     reg,n,q,q,q,q.count_ones(),
 		     w1=((n+3)/4) as usize,
 		     w2=n as usize,
-		     w3=((10*n)/33) as usize);
+		     w3=((10*n+32)/33) as usize);
 	} else {
 	    let mut nl = true;
 	    let c = 32;

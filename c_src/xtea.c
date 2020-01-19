@@ -64,7 +64,7 @@ static void xtea_encrypt(int rounds,struct xtea_ctx *ctx, uint8_t *dst, const ui
 }
 
 int main(int argc, const char **argv) {
-  uint32_t w[8];
+  uint32_t w[7];
   int i;
   struct xtea_ctx ctx;
   uint32_t x[2];

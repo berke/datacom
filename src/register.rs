@@ -4,7 +4,7 @@ pub struct Register(Vec<Index>);
 
 impl Register {
     pub fn dump<M:GateSoup>(_mac:&M,path:&str,
-			    regs:Vec<(&str,&Register)>)-> Result<(),std::io::Error> {
+			    regs:Vec<(String,&Register)>)-> Result<(),std::io::Error> {
 	use std::io::Write;
 	let fd = std::fs::File::create(path)?;
 	let mut fd = std::io::BufWriter::new(fd);
@@ -116,7 +116,7 @@ impl Register {
 	let Register(u) = &self;
 	match u.len() {
 	    0 => Register(vec![]),
-	    1 => Register(vec![mac.not(u[0]),u[0]]),
+	    1 => Register(vec![u[0],mac.not(u[0])]),
 	    n => {
 		let d = self.slice(1,n-1).decoder(mac);
 		let mut d0 = d.scale(mac,mac.not(u[0]));
