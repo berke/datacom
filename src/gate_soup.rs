@@ -13,6 +13,7 @@ pub trait GateSoup {
     fn dump(&self);
     fn input(&self,i:Index)->Index;
     fn new_input(&mut self)->Index;
+    fn num_inputs(&self)->usize;
     fn binop(&self,op:Op,a:Index,b:Index)->Index;
     fn and(&self,a:Index,b:Index)->Index;
     fn or(&self,a:Index,b:Index)->Index;

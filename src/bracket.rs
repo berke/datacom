@@ -31,12 +31,47 @@ enum Ummo {
     Bullshit
 }
 
-trait Morphism : Clone + Copy {
+pub trait Morphism : Clone + Copy {
     type T : Clone + Copy;
     fn zero(self)->Self::T;
     fn one(self)->Self::T;
     fn add(self,a:Self::T,b:Self::T)->Self::T;
     fn mul(self,a:Self::T,b:Self::T)->Self::T;
+}
+
+#[derive(Clone,Copy)]
+pub struct StandardMorphism { }
+
+impl Morphism for StandardMorphism {
+    type T = bool;
+    fn zero(self)->Self::T { false }
+    fn one(self)->Self::T { true }
+    fn add(self,a:Self::T,b:Self::T)->Self::T { a ^ b }
+    fn mul(self,a:Self::T,b:Self::T)->Self::T { a & b }
+}
+
+impl StandardMorphism {
+    pub fn new()->Self {
+	StandardMorphism{ }
+    }
+}
+
+
+#[derive(Clone,Copy)]
+pub struct SizeMorphism { }
+
+impl Morphism for SizeMorphism {
+    type T = f64;
+    fn zero(self)->Self::T { 1.0 }
+    fn one(self)->Self::T { 1.0 }
+    fn add(self,a:Self::T,b:Self::T)->Self::T { a + b }
+    fn mul(self,a:Self::T,b:Self::T)->Self::T { a + b }
+}
+
+impl SizeMorphism {
+    pub fn new()->Self {
+	SizeMorphism{ }
+    }
 }
 
 impl Bracket {
@@ -48,7 +83,7 @@ impl Bracket {
 	}
     }
 
-    fn is_zero(&self,i:Index)->Ummo {
+    pub fn is_zero(&self,i:Index)->Ummo {
 	match self.spec.borrow()[i as usize] {
 	    Term::Atom(Atom::Zero) => Ummo::Yes,
 	    Term::Atom(Atom::One) => Ummo::No,
@@ -56,7 +91,7 @@ impl Bracket {
 	}
     }
 
-    fn is_one(&self,i:Index)->Ummo {
+    pub fn is_one(&self,i:Index)->Ummo {
 	match self.spec.borrow()[i as usize] {
 	    Term::Atom(Atom::Zero) => Ummo::No,
 	    Term::Atom(Atom::One) => Ummo::Yes,
@@ -64,40 +99,7 @@ impl Bracket {
 	}
     }
 
-    fn eval_inner(&self,inputs:&Vec<bool>,busy:&mut Vec<bool>,done:&mut Vec<bool>,
-		  value:&mut Vec<bool>,i:Index)->bool {
-	let i = i as usize;
-	if busy[i] {
-	    panic!("Circular dependency involving gate {}",i);
-	}
-	if done[i] {
-	    return value[i];
-	}
-	busy[i] = true;
-	let x =
-	    match self.spec.borrow()[i] {
-		Term::Atom(Atom::Zero) => false,
-		Term::Atom(Atom::One) => true,
-		Term::Atom(Atom::Var(j)) => inputs[j as usize],
-		Term::Add(j1,j2) => {
-		    let x1 = self.eval_inner(inputs,busy,done,value,j1);
-		    let x2 = self.eval_inner(inputs,busy,done,value,j2);
-		    x1 ^ x2
-		},
-		Term::Mul(j1,j2) => {
-		    let x1 = self.eval_inner(inputs,busy,done,value,j1);
-		    let x2 = self.eval_inner(inputs,busy,done,value,j2);
-		    x1 & x2
-		},
-		Term::Term(j) => self.eval_inner(inputs,busy,done,value,j)
-	    };
-	done[i] = true;
-	value[i] = x;
-	busy[i] = false;
-	x
-    }
-
-    fn eval_inner_morphism<M:Morphism>(&self,inputs:&Vec<M::T>,busy:&mut Vec<bool>,done:&mut Vec<bool>,
+    pub fn eval_inner_morphism<M:Morphism>(&self,inputs:&Vec<M::T>,busy:&mut Vec<bool>,done:&mut Vec<bool>,
 		  value:&mut Vec<M::T>,i:Index,phi:&M)->M::T {
 	let i = i as usize;
 	if busy[i] {
@@ -130,8 +132,8 @@ impl Bracket {
 	x
     }
 
-    fn eval_morphism<M:Morphism>(&self,constraints:&Vec<(Index,bool)>,phi:&M)->Vec<M::T> {
-	let n = self.n_input.get() as usize;
+    pub fn eval_morphism<M:Morphism>(&self,constraints:&Vec<(Index,bool)>,phi:&M)->Vec<M::T> {
+	let n = self.num_inputs();
 	let mut inputs = Vec::new();
 	let mut defined = Vec::new();
 	let spec = self.spec.borrow();
@@ -196,47 +198,8 @@ impl Bracket {
 
 impl GateSoup for Bracket {
     fn eval(&self,constraints:&Vec<(Index,bool)>)->Vec<bool> {
-	let n = self.n_input.get() as usize;
-	let mut inputs = Vec::new();
-	let mut defined = Vec::new();
-	let spec = self.spec.borrow();
-	let m = spec.len();
-	inputs.resize(n,false);
-	defined.resize(n,false);
-	let mut n_ign_constr = 0;
-	for &(i,b) in constraints.iter() {
-	    let i = i as usize;
-	    match spec[i] {
-		Term::Atom(Atom::Var(j)) => {
-		    let j = j as usize;
-		    if defined[j] {
-			println!("Multiply defined input {}",i)
-		    } else {
-			defined[j] = true;
-			inputs[j] = b;
-		    }
-		},
-		_ => n_ign_constr += 1
-	    }
-	}
-	if n_ign_constr > 0 {
-	    println!("Warning: Number of ignored constraints on non-input gates: {}",n_ign_constr);
-	}
-	for i in 0..n {
-	    if !defined[i] {
-		panic!("Input {} not defined",i);
-	    }
-	}
-	let mut busy = Vec::new();
-	let mut done = Vec::new();
-	let mut value = Vec::new();
-	busy.resize(m,false);
-	done.resize(m,false);
-	value.resize(m,false);
-	for i in 0..m {
-	    let _ = self.eval_inner(&inputs,&mut busy,&mut done,&mut value,i as Index);
-	};
-	value
+	let phi = StandardMorphism::new();
+	self.eval_morphism(constraints,&phi)
     }
     fn dump(&self) {
 	let spec = self.spec.borrow();
@@ -252,6 +215,10 @@ impl GateSoup for Bracket {
 		Term::Mul(i,j) => println!("t{}*t{}",i,j),
 	    }
 	}
+    }
+
+    fn num_inputs(&self)->usize {
+	self.n_input.get() as usize
     }
 
     fn new_input(&mut self)->Index {

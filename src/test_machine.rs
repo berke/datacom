@@ -42,7 +42,7 @@ fn main() {
     // }
     // mac.dump();
     let mut xw = Xorwow::new(129837471234567);
-    let helper = 0x0ff00f0f;
+    let helper = 0xffffffff;
     let k0 = xw.next() & helper;
     let k1 = xw.next() & helper;
     let k2 = xw.next() & helper;
@@ -181,6 +181,15 @@ fn main() {
     }
 
     println!("Evaluating...");
+
+    if false {
+	let sz = bracket::SizeMorphism::new();
+	let s = mac.eval_morphism(&constraints,&sz);
+	for i in 0..s.len() {
+	    println!("{:05} {:5.1}",i,s[i].log2());
+	}
+    }
+
     let v = mac.eval(&constraints);
 
     for k in 0..4 {

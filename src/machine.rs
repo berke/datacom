@@ -245,7 +245,9 @@ impl GateSoup for Machine {
 	    }
 	}
     }
-
+    fn num_inputs(&self)->usize {
+	self.n_input.get() as usize
+    }
     fn new_input(&mut self)->Index {
 	let i = self.n_input.get();
 	self.n_input.set(i + 1);
