@@ -5,7 +5,7 @@ mod machine;
 mod xorwow;
 
 use xorwow::Xorwow;
-use machine::{Machine,Register};
+use machine::{AbstractMachine,Machine,Register};
 
 struct Traffic<T> {
     x:(T,T),

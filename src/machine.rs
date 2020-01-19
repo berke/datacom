@@ -27,50 +27,23 @@ pub struct Machine {
 
 }
 
+pub trait AbstractMachine {
+    fn eval(&self,constraints:&Vec<(Index,bool)>)->Vec<bool>;
+    fn dump(&self);
+    fn new()->Self;
+    fn find(&self,b:&Gate)->Option<Index>;
+    fn get(&self,b:&Gate)->Index;
+    fn input(&self,i:Index)->Index;
+    fn new_input(&mut self)->Index;
+    fn binop(&self,op:Op,a:Index,b:Index)->Index;
+    fn and(&self,a:Index,b:Index)->Index;
+    fn or(&self,a:Index,b:Index)->Index;
+    fn xor(&self,a:Index,b:Index)->Index;
+    fn not(&self,a:Index)->Index;
+    fn zero(&self)->Index;
+}
+
 impl Machine {
-    pub fn eval(&self,constraints:&Vec<(Index,bool)>)->Vec<bool> {
-	let n = self.n_input.get() as usize;
-	let mut inputs = Vec::new();
-	let mut defined = Vec::new();
-	let spec = self.spec.borrow();
-	let m = spec.len();
-	inputs.resize(n,false);
-	defined.resize(n,false);
-	let mut n_ign_constr = 0;
-	for &(i,b) in constraints.iter() {
-	    let i = i as usize;
-	    match spec[i] {
-		Gate::Input(j) => {
-		    let j = j as usize;
-		    if defined[j] {
-			println!("Multiply defined input {}",i)
-		    } else {
-			defined[j] = true;
-			inputs[j] = b;
-		    }
-		},
-		_ => n_ign_constr += 1
-	    }
-	}
-	if n_ign_constr > 0 {
-	    println!("Warning: Number of ignored constraints on non-input gates: {}",n_ign_constr);
-	}
-	for i in 0..n {
-	    if !defined[i] {
-		panic!("Input {} not defined",i);
-	    }
-	}
-	let mut busy = Vec::new();
-	let mut done = Vec::new();
-	let mut value = Vec::new();
-	busy.resize(m,false);
-	done.resize(m,false);
-	value.resize(m,false);
-	for i in 0..m {
-	    let _ = self.eval_inner(&inputs,&mut busy,&mut done,&mut value,i as Index);
-	};
-	value
-    }
     fn eval_inner(&self,inputs:&Vec<bool>,busy:&mut Vec<bool>,done:&mut Vec<bool>,value:&mut Vec<bool>,i:Index)->bool {
 	let i = i as usize;
 	if busy[i] {
@@ -100,23 +73,8 @@ impl Machine {
 	busy[i] = false;
 	x
     }
-    pub fn dump(&self) {
-	let spec = self.spec.borrow();
-	for i in 0..spec.len() {
-	    print!("x{} <- ",i+1);
-	    let v = &spec[i];
-	    match v {
-		Gate::Zero => println!("0"),
-		Gate::Input(i) => println!("INPUT({})",i),
-		Gate::Not(i) => println!("!x{}",i),
-		Gate::Binop(Op::And,i,j) => println!("x{} & x{}",i,j),
-		Gate::Binop(Op::Or,i,j) => println!("x{} | x{}",i,j),
-		Gate::Binop(Op::Xor,i,j) => println!("x{} ^ x{}",i,j)
-	    }
-	}
-    }
 
-    pub fn num_clauses(&self,constraints:&Vec<(Index,bool)>)->usize {
+    fn num_clauses(&self,constraints:&Vec<(Index,bool)>)->usize {
 	let mut cnt = 0;
 	let sp  = self.spec.borrow();
 	for i0 in 0..sp.len() {
@@ -225,19 +183,81 @@ impl Machine {
 	}
 	Ok(())
     }
-    pub fn new()->Self {
+}
+
+impl AbstractMachine for Machine {
+    fn eval(&self,constraints:&Vec<(Index,bool)>)->Vec<bool> {
+	let n = self.n_input.get() as usize;
+	let mut inputs = Vec::new();
+	let mut defined = Vec::new();
+	let spec = self.spec.borrow();
+	let m = spec.len();
+	inputs.resize(n,false);
+	defined.resize(n,false);
+	let mut n_ign_constr = 0;
+	for &(i,b) in constraints.iter() {
+	    let i = i as usize;
+	    match spec[i] {
+		Gate::Input(j) => {
+		    let j = j as usize;
+		    if defined[j] {
+			println!("Multiply defined input {}",i)
+		    } else {
+			defined[j] = true;
+			inputs[j] = b;
+		    }
+		},
+		_ => n_ign_constr += 1
+	    }
+	}
+	if n_ign_constr > 0 {
+	    println!("Warning: Number of ignored constraints on non-input gates: {}",n_ign_constr);
+	}
+	for i in 0..n {
+	    if !defined[i] {
+		panic!("Input {} not defined",i);
+	    }
+	}
+	let mut busy = Vec::new();
+	let mut done = Vec::new();
+	let mut value = Vec::new();
+	busy.resize(m,false);
+	done.resize(m,false);
+	value.resize(m,false);
+	for i in 0..m {
+	    let _ = self.eval_inner(&inputs,&mut busy,&mut done,&mut value,i as Index);
+	};
+	value
+    }
+    fn dump(&self) {
+	let spec = self.spec.borrow();
+	for i in 0..spec.len() {
+	    print!("x{} <- ",i+1);
+	    let v = &spec[i];
+	    match v {
+		Gate::Zero => println!("0"),
+		Gate::Input(i) => println!("INPUT({})",i),
+		Gate::Not(i) => println!("!x{}",i),
+		Gate::Binop(Op::And,i,j) => println!("x{} & x{}",i,j),
+		Gate::Binop(Op::Or,i,j) => println!("x{} | x{}",i,j),
+		Gate::Binop(Op::Xor,i,j) => println!("x{} ^ x{}",i,j)
+	    }
+	}
+    }
+
+    fn new()->Self {
 	Machine{
 	    spec:RefCell::new(Vec::new()),
 	    index:RefCell::new(BTreeMap::new()),
 	    n_input:Cell::new(0)
 	}
     }
-    pub fn find(&self,b:&Gate)->Option<Index> {
+    fn find(&self,b:&Gate)->Option<Index> {
 	self.index.borrow().get(b).map(|x| *x)
     }
     // commutation - canonicalization
 
-    pub fn get(&self,b:&Gate)->Index {
+    fn get(&self,b:&Gate)->Index {
 	match self.find(b) {
 	    Some(i) => i,
 	    None => {
@@ -249,14 +269,19 @@ impl Machine {
 	    }
 	}
     }
-    pub fn input(&self,i:Index)->Index {
+    fn new_input(&mut self)->Index {
+	let i = self.n_input.get();
+	self.n_input.set(i + 1);
 	self.get(&Gate::Input(i))
     }
-    pub fn binop(&self,op:Op,a:Index,b:Index)->Index {
+    fn input(&self,i:Index)->Index {
+	self.get(&Gate::Input(i))
+    }
+    fn binop(&self,op:Op,a:Index,b:Index)->Index {
 	let (a,b) = (a.min(b),a.max(b));
 	self.get(&Gate::Binop(op,a,b))
     }
-    pub fn and(&self,a:Index,b:Index)->Index {
+    fn and(&self,a:Index,b:Index)->Index {
 	if a == b {
 	    a
 	} else {
@@ -264,7 +289,7 @@ impl Machine {
 	    self.get(&Gate::Binop(Op::And,a,b))
 	}
     }
-    pub fn or(&self,a:Index,b:Index)->Index {
+    fn or(&self,a:Index,b:Index)->Index {
 	if a == b {
 	    a
 	} else {
@@ -272,7 +297,7 @@ impl Machine {
 	    self.get(&Gate::Binop(Op::Or,a,b))
 	}
     }
-    pub fn xor(&self,a:Index,b:Index)->Index {
+    fn xor(&self,a:Index,b:Index)->Index {
 	if a == b {
 	    self.zero()
 	} else {
@@ -280,10 +305,10 @@ impl Machine {
 	    self.get(&Gate::Binop(Op::Xor,a,b))
 	}
     }
-    pub fn not(&self,a:Index)->Index {
+    fn not(&self,a:Index)->Index {
 	self.get(&Gate::Not(a))
     }
-    pub fn zero(&self)->Index {
+    fn zero(&self)->Index {
 	self.get(&Gate::Zero)
     }
 }
@@ -291,80 +316,78 @@ impl Machine {
 pub struct Register(Vec<Index>);
 
 impl Register {
-    pub fn input(mac:&mut Machine,n:Index)->Self {
-	let k0 = mac.n_input.get();
-	mac.n_input.set(k0 + n);
-	Register( (k0..k0+n).map(|k| mac.input(k as Index)).collect() )
+    pub fn input<M:AbstractMachine>(mac:&mut M,n:Index)->Self {
+	Register( (0..n).map(|k| mac.new_input()).collect() )
     }
 
-    pub fn rotate_left(self:&Register,s:usize)->Self {
+    pub fn rotate_left(&self,s:usize)->Self {
 	let Register(v) = &self;
 	let n = v.len();
 	Register( (0..n).map(|k| v[(k + s) % n]).collect())
     }
 
-    pub fn shift_left(self:&Register,s:usize,zero:Index)->Self {
+    pub fn shift_left(&self,s:usize,zero:Index)->Self {
 	let Register(v) = &self;
 	let n = v.len();
 	Register( (0..n).map(|k| if k + s < n { v[k + s] } else { zero }).collect())
     }
 
-    pub fn shift_right(self:&Register,s:usize,zero:Index)->Self {
+    pub fn shift_right(&self,s:usize,zero:Index)->Self {
 	let Register(v) = &self;
 	let n = v.len();
 	Register( (0..n).map(|k| if k >= s { v[k - s] } else { zero }).collect())
     }
 
-    fn binop(self:&Register,mac:&mut Machine,op:Op,other:&Register)->Register {
+    fn binop<M:AbstractMachine>(&self,mac:&mut M,op:Op,other:&Self)->Self {
 	let Register(u) = &self;
 	let Register(v) = &other;
 	Register(u.iter().zip(v.iter()).map(|(ui,vi)| mac.binop(op,*ui,*vi)).collect())
     }
 
-    pub fn bit(self:&Register,i:usize)->Index {
+    pub fn bit(&self,i:usize)->Index {
 	let Register(u) = &self;
 	let n = u.len();
 	u[n - 1 - i]
     }
 
-    pub fn scale(self:&Register,mac:&mut Machine,bit:Index)->Register {
+    pub fn scale<M:AbstractMachine>(&self,mac:&mut M,bit:Index)->Self {
 	let Register(u) = &self;
 	Register(u.iter().map(|&ui| mac.and(bit,ui)).collect())
     }
 
-    pub fn and(self:&Register,mac:&mut Machine,other:&Register)->Register {
+    pub fn and<M:AbstractMachine>(&self,mac:&mut M,other:&Self)->Self {
 	self.binop(mac,Op::And,other)
     }
 
-    pub fn or(self:&Register,mac:&mut Machine,other:&Register)->Register {
+    pub fn or<M:AbstractMachine>(&self,mac:&mut M,other:&Self)->Self {
 	self.binop(mac,Op::Or,other)
     }
 
-    pub fn xor(self:&Register,mac:&mut Machine,other:&Register)->Register {
+    pub fn xor<M:AbstractMachine>(&self,mac:&mut M,other:&Self)->Self {
 	self.binop(mac,Op::Xor,other)
     }
 
-    pub fn slice(self:&Register,j0:usize,n:usize)->Register {
+    pub fn slice(&self,j0:usize,n:usize)->Self {
 	let Register(u) = &self;
 	Register(Vec::from(&u[j0..j0+n]))
     }
 
-    pub fn clone(self:&Register)->Register {
+    pub fn clone(&self)->Self {
 	Register(self.0.clone())
     }
 
-    pub fn append(self:&mut Register,other:&mut Register) {
+    pub fn append(self:&mut Self,other:&mut Self) {
 	let Register(ref mut u) = self;
 	let Register(ref mut v) = other;
 	u.append(v);
     }
 
-    pub fn constraints(self:&Register,x:u64)->Vec<(Index,bool)> {
+    pub fn constraints(&self,x:u64)->Vec<(Index,bool)> {
 	let n = self.0.len();
 	self.0.iter().enumerate().map(|(i,&u)| (u,(x >> (n - 1 - i)) & 1 != 0)).collect()
     }
 
-    pub fn value(self:&Register,values:&Vec<bool>)->u64 {
+    pub fn value(&self,values:&Vec<bool>)->u64 {
 	let mut q = 0;
 	let n = self.0.len();
 	for i in 0..n {
@@ -376,7 +399,7 @@ impl Register {
 	q
     }
 
-    pub fn add(self:&Register,mac:&mut Machine,other:&Register,carry:Index)->(Register,Index) {
+    pub fn add<M:AbstractMachine>(&self,mac:&mut M,other:&Self,carry:Index)->(Self,Index) {
 	let Register(u) = &self;
 	let Register(v) = &other;
 	let n = u.len();
