@@ -11,7 +11,7 @@ use xorwow::Xorwow;
 use register::Register;
 use machine::Machine;
 use gate_soup::GateSoup;
-// use bracket::Bracket;
+use bracket::Bracket;
 
 #[derive(Copy,Clone)]
 struct Traffic<T> {
@@ -20,17 +20,25 @@ struct Traffic<T> {
 }
 
 // const NROUND : usize = 1;
-const NROUND : usize = 6; // 5 works!
-const NTRAFFIC_BIT : usize = 8;
+const NROUND : usize = 4; // 5 works!
+const NTRAFFIC_BIT : usize = 4;
 const NTRAFFIC : usize = 1 << NTRAFFIC_BIT;
+
+
+// UNK_K_BITS  NROUND  NTRAFFIC_BIT   time     unique?
+//         64       4            10    1'50''  yes       FF111111 22222222 44444444 8888FFFF
+//         64       4            10    1'50''  yes       FF111111 22222222 44444444 8888FFFF
+
+// TODO: traffic or bin tree
+//       multi inst
 
 fn main() {
     // let mut args = std::env::args().skip(1);
     // let path = &args.next().unwrap();
     // let params = args.map(|x| x.parse::<u32>().unwrap()).collect::<Vec<u32>>();
 
-    let mut mac = Machine::new();
-    // let mut mac = Bracket::new();
+    // let mut mac = Machine::new();
+    let mut mac = Bracket::new();
 
     // let mut key1 = Register::input(&mut mac,0,32);
     // let mut key2 = Register::input(&mut mac,32,32);
@@ -46,14 +54,14 @@ fn main() {
     // mac.dump();
     let mut xw = Xorwow::new(129837471234567);
     let helper = 0xffffffff_u32;
-    // let k0 = xw.next() & helper;
-    // let k1 = xw.next() & helper;
-    // let k2 = xw.next() & helper;
-    // let k3 = xw.next() & helper;
-    let k0 = 0xff111111_u32;
-    let k1 = 0x22222222_u32;
-    let k2 = 0x44444444_u32;
-    let k3 = 0x8888ffff_u32;
+    let k0 = xw.next() & helper;
+    let k1 = xw.next() & helper;
+    let k2 = xw.next() & helper;
+    let k3 = xw.next() & helper;
+    // let k0 = 0xff111111_u32;
+    // let k1 = 0x22222222_u32;
+    // let k2 = 0x44444444_u32;
+    // let k3 = 0x8888ffff_u32;
     let key = [k0,k1,k2,k3];
 
     // Generate
@@ -103,6 +111,12 @@ fn main() {
     let addr_r = Register::input(&mut mac,NTRAFFIC_BIT as u32);
 
     // constraints.append(&mut addr_r.constraints(0x7 as u64));
+
+    // XXX known key bits
+    if false {
+	constraints.append(&mut key_r[0].constraints(key[0] as u64));
+	constraints.append(&mut key_r[1].constraints(key[1] as u64));
+    }
 
     let demux_r = addr_r.decoder(&mut mac);
     let r = 32 - NTRAFFIC_BIT as u32;
@@ -243,8 +257,9 @@ fn main() {
     }
 
     out_constraints.append(&mut constraints.clone());
-    mac.save_cnf("mac.cnf",&out_constraints).unwrap();
-    mac.dump("mac.gt").unwrap();
+    // mac.save_cnf("mac.cnf",&out_constraints).unwrap();
+    // mac.dump("mac.gt").unwrap();
+    mac.save("mac.alg",&out_constraints).unwrap();
 
     let mut reg_info =
 		   vec![

@@ -182,6 +182,36 @@ impl Bracket {
 	}
     }
 
+    pub fn save(&self,path:&str,constraints:&Vec<(Index,bool)>)->Result<(),std::io::Error> {
+	use std::io::Write;
+	let fd = std::fs::File::create(path)?;
+	let mut fd = std::io::BufWriter::new(fd);
+	let spec = self.spec.borrow();
+	let m = spec.len();
+	write!(fd,"{}\n",m);
+	let mut map = BTreeMap::new();
+	for &(i,b) in constraints.iter() {
+	    map.insert(i,b);
+	}
+	for i in 0..spec.len() {
+	    let v = &spec[i];
+	    match v {
+		Term::Atom(Atom::Zero) => writeln!(fd,"C 0")?,
+		Term::Atom(Atom::One) => writeln!(fd,"C 1")?,
+		Term::Atom(Atom::Var(i)) => {
+		    match map.get(i) {
+			None => writeln!(fd,"V {}",i)?,
+			Some(&b) => writeln!(fd,"C {}",if b { 1 } else { 0 })?,
+		    }
+		},
+		Term::Term(i) => writeln!(fd,"T {}",i)?,
+		Term::Add(i,j) => writeln!(fd,"A {} {}",i,j)?,
+		Term::Mul(i,j) => writeln!(fd,"M {} {}",i,j)?,
+	    }
+	}
+	Ok(())
+    }
+
     pub fn is_zero(&self,i:Index)->Ummo {
 	match self.spec.borrow()[i as usize] {
 	    Term::Atom(Atom::Zero) => Ummo::Yes,
@@ -307,6 +337,7 @@ impl GateSoup for Bracket {
 	let phi = StandardMorphism::new();
 	self.eval_morphism(constraints,&phi)
     }
+
     fn dump(&self,path:&str)->Result<(),std::io::Error> {
 	use std::io::Write;
 	let fd = std::fs::File::create(path)?;
