@@ -1,0 +1,17 @@
+EXCLUDE_QUERY_DIR
+B /home/alpha/.opam/4.07.1+flambda/lib/base/caml
+B /home/alpha/.opam/4.07.1+flambda/lib/ocaml
+B /home/alpha/.opam/4.07.1+flambda/lib/parsexp
+B /home/alpha/.opam/4.07.1+flambda/lib/ppx_sexp_conv/runtime-lib
+B /home/alpha/.opam/4.07.1+flambda/lib/sexplib
+B /home/alpha/.opam/4.07.1+flambda/lib/sexplib0
+B ../_build/default/src/.main.eobjs/byte
+S /home/alpha/.opam/4.07.1+flambda/lib/base/caml
+S /home/alpha/.opam/4.07.1+flambda/lib/ocaml
+S /home/alpha/.opam/4.07.1+flambda/lib/parsexp
+S /home/alpha/.opam/4.07.1+flambda/lib/ppx_sexp_conv/runtime-lib
+S /home/alpha/.opam/4.07.1+flambda/lib/sexplib
+S /home/alpha/.opam/4.07.1+flambda/lib/sexplib0
+S .
+FLG -ppx '/home/alpha/raxius/src/datacom/ml_src/_build/default/.ppx/1d890942fd6493446953bba0be553e7a/ppx.exe --as-ppx'
+FLG -w -40 -w -26-27-33-35
