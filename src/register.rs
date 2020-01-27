@@ -63,6 +63,11 @@ impl Register {
 	u[n - 1 - i]
     }
 
+    pub fn set_bit(&mut self,i:usize,bit:Index) {
+	let n = self.0.len();
+	self.0[n - 1 - i] = bit;
+    }
+
     pub fn scale<M:GateSoup>(&self,mac:&mut M,bit:Index)->Self {
 	let Register(u) = &self;
 	Register(u.iter().map(|&ui| mac.and(bit,ui)).collect())

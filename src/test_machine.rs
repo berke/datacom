@@ -10,7 +10,7 @@ mod bracket;
 use xorwow::Xorwow;
 use register::Register;
 use machine::Machine;
-use gate_soup::GateSoup;
+use gate_soup::{GateSoup,Index};
 use bracket::Bracket;
 
 #[derive(Copy,Clone)]
@@ -32,7 +32,7 @@ const NTRAFFIC : usize = 1 << NTRAFFIC_BIT;
 // TODO: traffic or bin tree
 //       multi inst
 
-fn main() {
+fn main_xtea() {
     // let mut args = std::env::args().skip(1);
     // let path = &args.next().unwrap();
     // let params = args.map(|x| x.parse::<u32>().unwrap()).collect::<Vec<u32>>();
@@ -330,3 +330,122 @@ fn main() {
     // 	// }
     // }
 }
+
+fn main() {
+    let mut in_constraints : Vec<(Index,bool)> = Vec::new();
+    let mut out_constraints : Vec<(Index,bool)> = Vec::new();
+    let mut mac = Machine::new();
+    let mut r1 = Register::input(&mut mac,19);   
+    let mut r2 = Register::input(&mut mac,22);
+    let mut r3 = Register::input(&mut mac,23);
+    // let r4 = Register::input(&mut mac,17);
+    // constraints.append(&mut r4.constraints(0xdeadbeef));
+
+    //let mut xw = Xorwow::new(129837471234567);
+    let mut xw = Xorwow::new(12934999941);
+    let helper = !0;
+    in_constraints.append(&mut r1.constraints((xw.next() & helper) as u64));
+    in_constraints.append(&mut r2.constraints((xw.next() & helper) as u64));
+    in_constraints.append(&mut r3.constraints((xw.next() & helper) as u64));
+
+    let mut r4 : u32 = xw.next();
+    let bl = |x| if x { 1 } else { 0 };
+
+    let maj = |a,b,c| mac.or(mac.or(mac.and(a,b),mac.and(a,c)),
+			     mac.and(b,c));
+
+    // (a&b)|(a&c)|(b&c)
+    // m = maj(a,b,c)
+    // a b c m w g
+    // 0 0 0 0 0 1
+    // 0 0 0 1 0 0
+    // 0 0 1 0 0 1 
+    // 0 0 1 1 0 0
+    // 0 1 0 0 0 0
+    // 0 1 0 1 0 0
+    // 0 1 1 0 1 0
+    // 0 1 1 1 1 1
+    // 1 0 0 0 0 1
+    // 1 0 0 1 0 0
+    // 1 0 1 0 1 0
+    // 1 0 1 1 1 1
+    // 1 1 0 0 1 0
+    // 1 1 0 1 1 1
+    // 1 1 1 0 1 0
+    // 1 1 1 1 1 1
+
+    let mut outputs = Vec::new();
+    
+    for t in 0..512 {
+	let f = ((r4 >> 16) ^ (r4 >> 11)) & 1;
+	r4 = (r4.wrapping_shl(1) & ((1 << 17) - 1)) | f;
+
+	let a = (r4 >> 3) & 1 != 0;
+	let b = (r4 >> 7) & 1 != 0;
+	let c = (r4 >> 10) & 1 != 0;
+	let mj = (a&b)^(a&c)^(b&c);
+	let c1 = c == mj;
+	let c2 = a == mj;
+	let c3 = b == mj;
+	// println!("{}{}{}",bl(c1),bl(c2),bl(c3));
+
+	if c1 {
+	    let f1 = mac.xor(r1.bit(18),
+			     mac.xor(r1.bit(17),
+				     r1.bit(14)));
+	    r1 = r1.rotate_left(1);
+	    r1.set_bit(0,f1);
+	}
+
+	if c2 {
+	    let f2 = mac.xor(r2.bit(21),
+			     r2.bit(20));
+	    r2 = r2.rotate_left(1);
+	    r2.set_bit(0,f2);
+	}
+
+	if c3 {
+	    let f3 =
+		mac.xor(
+		    mac.xor(r3.bit(22),
+			    r3.bit(21)),
+		    r3.bit(7));
+	    r3 = r3.rotate_left(1);
+	    r3.set_bit(0,f3);
+	}
+
+	let m1 = maj(r1.bit(15),mac.not(r1.bit(14)),r1.bit(12));
+	let m2 = maj(mac.not(r2.bit(16)),r2.bit(13),r2.bit(9));
+	let m3 = maj(r3.bit(18),r3.bit(16),mac.not(r3.bit(13)));
+
+	let o = mac.xor(m1,mac.xor(m2,m3));
+	outputs.push(o);
+    }
+
+    let v = mac.eval(&in_constraints);
+    for &u in outputs.iter() {
+	out_constraints.push((u,v[u as usize]));
+	// println!("OUT {} -> {}",u,v[u as usize]);
+    }
+    
+    // out_constraints.append(&mut Vec::from(&mut in_constraints[0..8]));
+    mac.save_cnf("mac.cnf",&out_constraints).unwrap();
+}
+
+//     12                            4.3
+//     10                            6.0
+// With 8 bits provided: takes about 1 second for cryptominisat5 (64 bit data)
+//      6                            too long
+// "    4 "                          too long
+// 131072 values for R4 - 
+//      0                            8'33''
+
+// 8 bits - 30 s
+
+// Can we use SAT to compute a key-independent solver?
+// SAT-encode NP-complete problem
+// SAT --> SAT
+
+// A5/2 with known R4 and  256 bits of plaintext: takes 8'33'' for cryptominisat
+// A5/2 with known R4 and  512 bits of plaintext: takes 56'' for cryptominisat
+// A5/2 with known R4 and 1024 bits of plaintext: takes 37'48'' for cryptominisat
