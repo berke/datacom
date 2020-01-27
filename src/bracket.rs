@@ -194,19 +194,19 @@ impl Bracket {
 	    map.insert(i,b);
 	}
 	for i in 0..spec.len() {
-	    let v = &spec[i];
-	    match v {
-		Term::Atom(Atom::Zero) => writeln!(fd,"C 0")?,
-		Term::Atom(Atom::One) => writeln!(fd,"C 1")?,
-		Term::Atom(Atom::Var(i)) => {
-		    match map.get(i) {
-			None => writeln!(fd,"V {}",i)?,
-			Some(&b) => writeln!(fd,"C {}",if b { 1 } else { 0 })?,
+	    match map.get(&(i as Index)) {
+		Some(&b) => writeln!(fd,"C {}",if b { 1 } else { 0 })?,
+		None => {
+		    let v = &spec[i];
+		    match v {
+			Term::Atom(Atom::Zero) => writeln!(fd,"C 0")?,
+			Term::Atom(Atom::One) => writeln!(fd,"C 1")?,
+			Term::Atom(Atom::Var(i)) => writeln!(fd,"V {}",i)?,
+			Term::Term(i) => writeln!(fd,"T {}",i)?,
+			Term::Add(i,j) => writeln!(fd,"A {} {}",i,j)?,
+			Term::Mul(i,j) => writeln!(fd,"M {} {}",i,j)?
 		    }
-		},
-		Term::Term(i) => writeln!(fd,"T {}",i)?,
-		Term::Add(i,j) => writeln!(fd,"A {} {}",i,j)?,
-		Term::Mul(i,j) => writeln!(fd,"M {} {}",i,j)?,
+		}
 	    }
 	}
 	Ok(())
