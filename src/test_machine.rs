@@ -332,9 +332,10 @@ fn main_xtea() {
 }
 
 fn main() {
+    // let mut mac = Machine::new();
+    let mut mac = Bracket::new();
     let mut in_constraints : Vec<(Index,bool)> = Vec::new();
     let mut out_constraints : Vec<(Index,bool)> = Vec::new();
-    let mut mac = Machine::new();
     let mut r1 = Register::input(&mut mac,19);   
     let mut r2 = Register::input(&mut mac,22);
     let mut r3 = Register::input(&mut mac,23);
@@ -344,9 +345,26 @@ fn main() {
     //let mut xw = Xorwow::new(129837471234567);
     let mut xw = Xorwow::new(12934999941);
     let helper = !0;
-    in_constraints.append(&mut r1.constraints((xw.next() & helper) as u64));
-    in_constraints.append(&mut r2.constraints((xw.next() & helper) as u64));
-    in_constraints.append(&mut r3.constraints((xw.next() & helper) as u64));
+
+    let k1 = xw.next() & ((1 << 19) - 1);
+    let k2 = xw.next() & ((1 << 22) - 1);
+    let k3 = xw.next() & ((1 << 23) - 1);
+    println!("k1 = {:08X}",k1);
+    println!("k2 = {:08X}",k2);
+    println!("k3 = {:08X}",k3);
+
+    in_constraints.append(&mut r1.constraints(k1 as u64));
+    in_constraints.append(&mut r2.constraints(k2 as u64));
+    in_constraints.append(&mut r3.constraints(k3 as u64));
+
+    let r1_c = r1.clone();
+    let r2_c = r2.clone();
+    let r3_c = r3.clone();
+    let mut reg_info =
+		   vec![
+		       ("r1".to_string(),&r1_c),
+		       ("r2".to_string(),&r2_c),
+		       ("r3".to_string(),&r3_c)];
 
     let mut r4 : u32 = xw.next();
     let bl = |x| if x { 1 } else { 0 };
@@ -376,7 +394,7 @@ fn main() {
 
     let mut outputs = Vec::new();
     
-    for t in 0..512 {
+    for t in 0..600 {
 	let f = ((r4 >> 16) ^ (r4 >> 11)) & 1;
 	r4 = (r4.wrapping_shl(1) & ((1 << 17) - 1)) | f;
 
@@ -429,7 +447,9 @@ fn main() {
     }
     
     // out_constraints.append(&mut Vec::from(&mut in_constraints[0..8]));
-    mac.save_cnf("mac.cnf",&out_constraints).unwrap();
+    //mac.save_cnf("mac.cnf",&out_constraints).unwrap();
+    mac.save("mac.alg",&out_constraints).unwrap();
+    Register::dump(&mac,"mac.reg",reg_info).unwrap();
 }
 
 //     12                            4.3

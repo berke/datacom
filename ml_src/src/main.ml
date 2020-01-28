@@ -274,43 +274,65 @@ let dump_with_var dump_var a oc =
 let dump = dump_with_var (fun oc v -> P.fprintf oc "%d" v)
 
 module QuadVar = struct
-  type v =
+  type t =
     | Lin of int
     | Quad of int * int
+
+  let compare (x : t) y = compare x y
 end
 
-module QuadTerm = Make_Term(QuadVar)
-
 module Linearization_Morphism = struct
-  module Memo = Make_Memo(QuadVar)
+  module Memo = Make_Memo(Var)
 
-  type state = Memo.t
+  module QVM = Map.Make(QuadVar)
+
+  type state = {
+      mm : Memo.t;
+      mutable cnt : int;
+      mutable idx : int QVM.t;
+    }
 
   type q = Memo.Term.u
 
-  let const mm b = Memo.const mm b
+  let state () = {
+      mm = Memo.make ();
+      cnt = 0;
+      idx = QVM.empty
+    }
 
-  let var mm v = Memo.var mm (QuadVar.Lin v)
+  let const state b = Memo.const state.mm b
 
-  let sum mm t1 t2 = Memo.sum mm t1 t2
+  (* t12 = t1 t2 *)
+  let getqv state qv =
+    match QVM.find_opt qv state.idx with
+    | None ->
+       (* v = v' v'' *)
+       let c = state.cnt in
+       state.cnt <- state.cnt + 1;
+       state.idx <- QVM.add qv c state.idx;
+       c
+    | Some c -> c
 
-  let mul mm t1 t2 =
+  let var state v = Memo.var state.mm (getqv state (QuadVar.Lin v))
+
+  let sum state t1 t2 = Memo.sum state.mm t1 t2
+
+  let mul state t1 t2 =
     if t1 = t2 then
       t1
     else
-      Memo.var mm (QuadVar.Quad(min t1 t2,max t1 t2))
+      Memo.var state.mm (getqv state (QuadVar.Quad(min t1 t2,max t1 t2)))
 end
 
-module LME = struct
-  include Morphism_Evaluator(Linearization_Morphism)
+module LME = Morphism_Evaluator(Linearization_Morphism)
 
-  let dump (a,mm) oc =
-    dump_with_var (fun oc v ->
-        match v with
-        | QuadVar.Lin v -> P.fprintf oc "v%d" v
-        | QuadVar.Quad(t1,t2) -> P.fprintf oc "t(%d,%d)" t1 t2)
-    a oc
-end
+(*   let dump (a,mm) oc =
+ *     dump_with_var (fun oc v ->
+ *         match v with
+ *         | QuadVar.Lin v -> P.fprintf oc "v%d" v
+ *         | QuadVar.Quad(t1,t2) -> P.fprintf oc "t(%d,%d)" t1 t2)
+ *     a oc
+ * end *)
 
 
 
@@ -359,8 +381,8 @@ let _ =
   wrap (open_out "opt.tr") close_out (fun oc -> Array.iteri (fun i u -> P.fprintf oc "%d %d\n" i u) tr);
   let vs = VSME.eval () a' in
   wrap (open_out "opt.vs") close_out (VSME.dump vs);
-  let mm = Linearization_Morphism.Memo.make () in
-  let b' = LME.eval mm a' in
-  let b' = Linearization_Morphism.Memo.to_array mm in
+  let state = Linearization_Morphism.state () in
+  let b' = LME.eval state a' in
+  let b' = Linearization_Morphism.Memo.to_array state.Linearization_Morphism.mm in
   P.printf "Linearized: %d\n%!" (Array.length b');
-  wrap (open_out "opt.lin") close_out (LME.dump (b',mm))
+  wrap (open_out "opt.lin") close_out (dump b')
