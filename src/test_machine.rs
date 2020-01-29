@@ -12,6 +12,7 @@ use register::Register;
 use machine::Machine;
 use gate_soup::{GateSoup,Index};
 use bracket::Bracket;
+use cryptominisat::Lbool;
 
 #[derive(Copy,Clone)]
 struct Traffic<T> {
@@ -331,7 +332,7 @@ fn main_xtea() {
     // }
 }
 
-fn main2() {
+fn main() {
     let mut mac = Machine::new();
     // let mut mac = Bracket::new();
     let mut in_constraints : Vec<(Index,bool)> = Vec::new();
@@ -488,7 +489,7 @@ fn main2() {
     let mut set = Vec::new();
     set.resize(m,false);
     let mut i;
-    for k in 0..9 {
+    for k in 0..38 {
 	loop {
 	    i = rnd_int(m);
 	    if !set[i] {
@@ -522,9 +523,40 @@ fn main2() {
     // }
 
     //out_constraints.append(&mut Vec::from(&mut in_constraints[0..40]));
-    mac.save_cnf("mac.cnf",&out_constraints).unwrap();
+    // mac.save_cnf("mac.cnf",&out_constraints).unwrap();
     // mac.save("mac.alg",&out_constraints).unwrap();
     Register::dump(&mac,"mac.reg",reg_info).unwrap();
+
+    let mut solver = mac.solver(&out_constraints);
+    println!("Solving...");
+    loop {
+	// Make some random assumptions
+	let mut ass = Vec::new();
+	let mut set = Vec::new();
+	set.resize(m,false);
+	let mut i;
+	for k in 0..1 {
+	    loop {
+		i = rnd_int(m);
+		if !set[i] {
+		    break;
+		}
+	    }
+	    set[i] = true;
+	    let b = rnd_int(2) != 0;
+	    ass.push(Lit::new(key.bit(i),b).unwrap());
+	    println!("{}={}",i,b);
+	}
+
+	println!("Solving...");
+	solver.set_max_time(3.0);
+	let ret = solver.solve_with_assumptions(&ass);
+	match ret {
+	    Lbool::True => println!("True"),
+	    Lbool::False => println!("False"),
+	    Lbool::Undef => println!("Undef")
+	}
+    }
 }
 
 
@@ -595,7 +627,4 @@ fn main4() {
     solver.add_clause(&clause);
 
     let ret = solver.solve();
-}
-
-fn main() {
 }
