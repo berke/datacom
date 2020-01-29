@@ -24,7 +24,7 @@ impl Register {
 	Ok(())
     }
 	
-    pub fn input<M:GateSoup>(mac:&mut M,n:Index)->Self {
+    pub fn input<M:GateSoup>(mac:&M,n:Index)->Self {
 	Register( (0..n).map(|_k| mac.new_input()).collect() )
     }
 
@@ -40,19 +40,23 @@ impl Register {
 	Register( (0..n).map(|k| if k + s < n { v[k + s] } else { zero }).collect())
     }
 
+    pub fn len(&self)->usize {
+	self.0.len()
+    }
+
     pub fn shift_right(&self,s:usize,zero:Index)->Self {
 	let Register(v) = &self;
 	let n = v.len();
 	Register( (0..n).map(|k| if k >= s { v[k - s] } else { zero }).collect())
     }
 
-    fn binop<M:GateSoup>(&self,mac:&mut M,op:Op,other:&Self)->Self {
+    fn binop<M:GateSoup>(&self,mac:&M,op:Op,other:&Self)->Self {
 	let Register(u) = &self;
 	let Register(v) = &other;
 	Register(u.iter().zip(v.iter()).map(|(ui,vi)| mac.binop(op,*ui,*vi)).collect())
     }
 
-    pub fn not<M:GateSoup>(&self,mac:&mut M)->Self {
+    pub fn not<M:GateSoup>(&self,mac:&M)->Self {
 	let Register(u) = &self;
 	Register(u.iter().map(|ui| mac.not(*ui)).collect())
     }
@@ -68,20 +72,20 @@ impl Register {
 	self.0[n - 1 - i] = bit;
     }
 
-    pub fn scale<M:GateSoup>(&self,mac:&mut M,bit:Index)->Self {
+    pub fn scale<M:GateSoup>(&self,mac:&M,bit:Index)->Self {
 	let Register(u) = &self;
 	Register(u.iter().map(|&ui| mac.and(bit,ui)).collect())
     }
 
-    pub fn and<M:GateSoup>(&self,mac:&mut M,other:&Self)->Self {
+    pub fn and<M:GateSoup>(&self,mac:&M,other:&Self)->Self {
 	self.binop(mac,Op::And,other)
     }
 
-    pub fn or<M:GateSoup>(&self,mac:&mut M,other:&Self)->Self {
+    pub fn or<M:GateSoup>(&self,mac:&M,other:&Self)->Self {
 	self.binop(mac,Op::Or,other)
     }
 
-    pub fn xor<M:GateSoup>(&self,mac:&mut M,other:&Self)->Self {
+    pub fn xor<M:GateSoup>(&self,mac:&M,other:&Self)->Self {
 	self.binop(mac,Op::Xor,other)
     }
 

@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 use std::cell::{Cell,RefCell};
 use crate::gate_soup::{InputIndex,Index,Op,GateSoup};
+use cryptominisat::{Solver,Lit};
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum Gate {
@@ -75,6 +76,54 @@ impl Machine {
 	cnt
     }
 
+    pub fn solver(&self,constraints:&Vec<(Index,bool)>)->Solver {
+	let mut solver = Solver::new();
+	let sp  = self.spec.borrow();
+	let n = sp.len();
+	solver.new_vars(n);
+
+	let pos = |i| Lit::new(i,false).unwrap();
+	let neg = |i| Lit::new(i,true).unwrap();
+	let use_xor = true;
+	for i0 in 0..sp.len() {
+	    let z = i0 as Index;
+	    match sp[i0] {
+		Gate::Zero => { let _ = solver.add_clause(&vec![neg(z)]); },
+		Gate::Input(_) => (),
+		Gate::Not(x) => {
+		    let _ = solver.add_clause(&vec![pos(x),pos(z)]);
+		    let _ = solver.add_clause(&vec![neg(x),neg(z)]);
+		},
+		Gate::Binop(Op::And,x,y) => {
+		    let _ = solver.add_clause(&vec![pos(x),pos(y),neg(z)]);
+		    let _ = solver.add_clause(&vec![pos(x),neg(y),neg(z)]);
+		    let _ = solver.add_clause(&vec![neg(x),pos(y),neg(z)]);
+		    let _ = solver.add_clause(&vec![neg(x),neg(y),pos(z)]);
+		},
+		Gate::Binop(Op::Or,x,y) => {
+		    let _ = solver.add_clause(&vec![pos(x),pos(y),neg(z)]);
+		    let _ = solver.add_clause(&vec![pos(x),neg(y),pos(z)]);
+		    let _ = solver.add_clause(&vec![neg(x),pos(y),pos(z)]);
+		    let _ = solver.add_clause(&vec![neg(x),neg(y),pos(z)]);
+		},
+		Gate::Binop(Op::Xor,x,y) => {
+		    if use_xor {
+			let _ = solver.add_xor_literal_clause(&vec![pos(x),pos(y),neg(z)],false);
+		    } else {
+			let _ = solver.add_clause(&vec![pos(x),pos(y),neg(z)]);
+			let _ = solver.add_clause(&vec![pos(x),neg(y),pos(z)]);
+			let _ = solver.add_clause(&vec![neg(x),pos(y),pos(z)]);
+			let _ = solver.add_clause(&vec![neg(x),neg(y),neg(z)]);
+		    }
+		}
+	    }
+	}
+	for &(i,b) in constraints.iter() {
+	    let _ = solver.add_clause(&vec![if b { pos(i) } else { neg(i) }]);
+	}
+	solver
+    }
+
     pub fn save_cnf(&self,path:&str,constraints:&Vec<(Index,bool)>)->Result<(),std::io::Error> {
 	use std::io::Write;
 	let fd = std::fs::File::create(path)?;
@@ -85,6 +134,7 @@ impl Machine {
 	write!(fd,"p cnf {} {}\n",m,n)?;
 	let pos = |i| (i + 1) as i32;
 	let neg = |i| -((i + 1) as i32);
+	let use_xor = true;
 	for i0 in 0..sp.len() {
 	    let z = i0 as Index;
 	    match sp[i0] {
@@ -154,10 +204,14 @@ impl Machine {
 		// (1)     (2)     (3)    (4)
 		// (-x-y+z)(-x+y-z)(x-y-z)(x+y+z)
 		Gate::Binop(Op::Xor,x,y) => {
-		    write!(fd,"{} {} {} 0\n",pos(x),pos(y),neg(z))?;
-		    write!(fd,"{} {} {} 0\n",pos(x),neg(y),pos(z))?;
-		    write!(fd,"{} {} {} 0\n",neg(x),pos(y),pos(z))?;
-		    write!(fd,"{} {} {} 0\n",neg(x),neg(y),neg(z))?;
+		    if use_xor {
+			write!(fd,"x{} {} {} 0\n",pos(x),pos(y),neg(z));
+		    } else {
+			write!(fd,"{} {} {} 0\n",pos(x),pos(y),neg(z))?;
+			write!(fd,"{} {} {} 0\n",pos(x),neg(y),pos(z))?;
+			write!(fd,"{} {} {} 0\n",neg(x),pos(y),pos(z))?;
+			write!(fd,"{} {} {} 0\n",neg(x),neg(y),neg(z))?;
+		    }
 		}
 	    }
 	}
@@ -252,7 +306,7 @@ impl GateSoup for Machine {
     fn num_inputs(&self)->usize {
 	self.n_input.get() as usize
     }
-    fn new_input(&mut self)->Index {
+    fn new_input(&self)->Index {
 	let i = self.n_input.get();
 	self.n_input.set(i + 1);
 	self.get(&Gate::Input(i))

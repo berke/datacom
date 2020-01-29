@@ -13,7 +13,7 @@ pub trait GateSoup {
     fn eval(&self,constraints:&Vec<(Index,bool)>)->Vec<bool>;
     fn dump(&self,path:&str)->Result<(),std::io::Error>;
     fn input(&self,i:InputIndex)->Index;
-    fn new_input(&mut self)->Index;
+    fn new_input(&self)->Index;
     fn num_inputs(&self)->usize;
     fn binop(&self,op:Op,a:Index,b:Index)->Index;
     fn and(&self,a:Index,b:Index)->Index;

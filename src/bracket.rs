@@ -188,7 +188,7 @@ impl Bracket {
 	let mut fd = std::io::BufWriter::new(fd);
 	let spec = self.spec.borrow();
 	let m = spec.len();
-	write!(fd,"{}\n",m);
+	write!(fd,"{}\n",m)?;
 	let mut map = BTreeMap::new();
 	for &(i,b) in constraints.iter() {
 	    map.insert(i,b);
@@ -362,7 +362,7 @@ impl GateSoup for Bracket {
 	self.n_input.get() as usize
     }
 
-    fn new_input(&mut self)->Index {
+    fn new_input(&self)->Index {
 	let i = self.n_input.get();
 	self.n_input.set(i + 1);
 	self.get(&Term::Atom(Atom::Var(i)))

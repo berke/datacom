@@ -331,46 +331,48 @@ fn main_xtea() {
     // }
 }
 
-fn main() {
-    // let mut mac = Machine::new();
-    let mut mac = Bracket::new();
+fn main2() {
+    let mut mac = Machine::new();
+    // let mut mac = Bracket::new();
     let mut in_constraints : Vec<(Index,bool)> = Vec::new();
     let mut out_constraints : Vec<(Index,bool)> = Vec::new();
     let mut r1 = Register::input(&mut mac,19);   
     let mut r2 = Register::input(&mut mac,22);
     let mut r3 = Register::input(&mut mac,23);
-    // let r4 = Register::input(&mut mac,17);
+    let mut r4 = Register::input(&mut mac,17);
     // constraints.append(&mut r4.constraints(0xdeadbeef));
 
     //let mut xw = Xorwow::new(129837471234567);
-    let mut xw = Xorwow::new(12934999941);
+    let mut xw = Xorwow::new(19934559142);
     let helper = !0;
 
     let k1 = xw.next() & ((1 << 19) - 1);
     let k2 = xw.next() & ((1 << 22) - 1);
     let k3 = xw.next() & ((1 << 23) - 1);
+    let k4 = xw.next() & ((1 << 17) - 1);
     println!("k1 = {:08X}",k1);
     println!("k2 = {:08X}",k2);
     println!("k3 = {:08X}",k3);
+    println!("k4 = {:08X}",k4);
 
     in_constraints.append(&mut r1.constraints(k1 as u64));
     in_constraints.append(&mut r2.constraints(k2 as u64));
     in_constraints.append(&mut r3.constraints(k3 as u64));
+    in_constraints.append(&mut r4.constraints(k4 as u64));
 
     let r1_c = r1.clone();
     let r2_c = r2.clone();
     let r3_c = r3.clone();
+    let r4_c = r4.clone();
     let mut reg_info =
 		   vec![
 		       ("r1".to_string(),&r1_c),
 		       ("r2".to_string(),&r2_c),
-		       ("r3".to_string(),&r3_c)];
+		       ("r3".to_string(),&r3_c),
+		       ("r4".to_string(),&r4_c)];
 
-    let mut r4 : u32 = xw.next();
+    // let mut r4 : u32 = xw.next();
     let bl = |x| if x { 1 } else { 0 };
-
-    let maj = |a,b,c| mac.or(mac.or(mac.and(a,b),mac.and(a,c)),
-			     mac.and(b,c));
 
     // (a&b)|(a&c)|(b&c)
     // m = maj(a,b,c)
@@ -393,44 +395,49 @@ fn main() {
     // 1 1 1 1 1 1
 
     let mut outputs = Vec::new();
+
+    let maj = |a,b,c| mac.or(mac.or(mac.and(a,b),mac.and(a,c)),
+			     mac.and(b,c));
     
-    for t in 0..600 {
-	let f = ((r4 >> 16) ^ (r4 >> 11)) & 1;
-	r4 = (r4.wrapping_shl(1) & ((1 << 17) - 1)) | f;
+    for t in 0..100*81 {
+	let f = mac.xor(r4.bit(16),r4.bit(11));
+	r4 = r4.rotate_left(1);
+	r4.set_bit(0,f);
 
-	let a = (r4 >> 3) & 1 != 0;
-	let b = (r4 >> 7) & 1 != 0;
-	let c = (r4 >> 10) & 1 != 0;
-	let mj = (a&b)^(a&c)^(b&c);
-	let c1 = c == mj;
-	let c2 = a == mj;
-	let c3 = b == mj;
-	// println!("{}{}{}",bl(c1),bl(c2),bl(c3));
+	let a = r4.bit(3);
+	let b = r4.bit(7);
+	let c = r4.bit(10);
 
-	if c1 {
-	    let f1 = mac.xor(r1.bit(18),
-			     mac.xor(r1.bit(17),
-				     r1.bit(14)));
-	    r1 = r1.rotate_left(1);
-	    r1.set_bit(0,f1);
-	}
+	let mj = maj(a,b,c);
+	let eq = |x,y| mac.or(mac.and(mac.not(x),mac.not(y)),mac.and(x,y));
+	let c1 = eq(c,mj);
+	let c2 = eq(a,mj);
+	let c3 = eq(b,mj);
 
-	if c2 {
-	    let f2 = mac.xor(r2.bit(21),
-			     r2.bit(20));
-	    r2 = r2.rotate_left(1);
-	    r2.set_bit(0,f2);
-	}
+	let f1 = mac.xor(r1.bit(18),
+			 mac.xor(r1.bit(17),
+				 r1.bit(14)));
+	let mut r1_clk = r1.rotate_left(1);
+	r1_clk.set_bit(0,f1);
+	let r1_clk = r1_clk.scale(&mac,c1);
+	r1 = r1.scale(&mac,mac.not(c1)).or(&mac,&r1_clk);
 
-	if c3 {
-	    let f3 =
-		mac.xor(
-		    mac.xor(r3.bit(22),
-			    r3.bit(21)),
-		    r3.bit(7));
-	    r3 = r3.rotate_left(1);
-	    r3.set_bit(0,f3);
-	}
+	let f2 = mac.xor(r2.bit(21),
+			 r2.bit(20));
+	let mut r2_clk = r2.rotate_left(1);
+	r2_clk.set_bit(0,f2);
+	let r2_clk = r2_clk.scale(&mac,c2);
+	r2 = r2.scale(&mac,mac.not(c2)).or(&mac,&r2_clk);
+
+	let f3 =
+	    mac.xor(
+		mac.xor(r3.bit(22),
+			r3.bit(21)),
+		r3.bit(7));
+	let mut r3_clk = r3.rotate_left(1);
+	r3_clk.set_bit(0,f2);
+	let r3_clk = r3_clk.scale(&mac,c3);
+	r3 = r3.scale(&mac,mac.not(c3)).or(&mac,&r3_clk);
 
 	let m1 = maj(r1.bit(15),mac.not(r1.bit(14)),r1.bit(12));
 	let m2 = maj(mac.not(r2.bit(16)),r2.bit(13),r2.bit(9));
@@ -440,17 +447,93 @@ fn main() {
 	outputs.push(o);
     }
 
+    let mut xw = Xorwow::new(4);
     let v = mac.eval(&in_constraints);
     for &u in outputs.iter() {
-	out_constraints.push((u,v[u as usize]));
+	let p = xw.next() as f64 / ((1_u64 << 32) - 1) as f64;
+	if p <= 1.00 {
+	    out_constraints.push((u,v[u as usize]));
+	}
 	// println!("OUT {} -> {}",u,v[u as usize]);
     }
     
-    // out_constraints.append(&mut Vec::from(&mut in_constraints[0..8]));
-    //mac.save_cnf("mac.cnf",&out_constraints).unwrap();
-    mac.save("mac.alg",&out_constraints).unwrap();
+    let mut xw = Xorwow::new(10);
+    // let mut k = 0;
+    // for &(u,b) in in_constraints.iter() {
+    // 	let p = xw.next() as f64 / ((1_u64 << 32) - 1) as f64;
+    // 	if p < 0.10 {
+    // 	    // out_constraints.push((u,b));
+    // 	    let b = (xw.next() & 1) != 0;
+    // 	    out_constraints.push((u,b));
+    // 	    k += 1;
+    // 	}
+    // }
+    // println!("Key constraints provided: {}/{}",k,in_constraints.len());
+
+    let mut rnd = || {
+	xw.next() as f64 / ((1_u64 << 32) - 1) as f64
+    };
+
+    let mut rnd_int = |n:usize| {
+	(rnd() * n as f64).floor() as usize
+    };
+
+    let mut key = r1.clone();
+    key.append(&mut r2.clone());
+    key.append(&mut r3.clone());
+    key.append(&mut r4.clone());
+
+    let m = key.len();
+
+    let mut set = Vec::new();
+    set.resize(m,false);
+    let mut i;
+    for k in 0..9 {
+	loop {
+	    i = rnd_int(m);
+	    if !set[i] {
+		break;
+	    }
+	}
+	set[i] = true;
+	let b = rnd_int(2) != 0;
+	out_constraints.push((key.bit(i),b));
+    }
+
+    // let mut o = mac.zero();
+    // for l in 0..100 {
+    // 	let mut a = mac.one();
+    // 	for k in 0..30 {
+    // 	    let i = rnd_int(m - 1);
+    // 	    let j = i + rnd_int(m - i - 1);
+    // 	    let o = mac.xor(key.bit(i),key.bit(j));
+    // 	    a = mac.and(a,mac.not(o));
+    // 	}
+    // 	o = mac.or(o,a);
+    // }
+    // out_constraints.push((o,true));
+    // for &(u,b) in in_constraints.iter() {
+    // 	if p < 0.10 {
+    // 	    // out_constraints.push((u,b));
+    // 	    let b = (xw.next() & 1) != 0;
+    // 	    out_constraints.push((u,b));
+    // 	    k += 1;
+    // 	}
+    // }
+
+    //out_constraints.append(&mut Vec::from(&mut in_constraints[0..40]));
+    mac.save_cnf("mac.cnf",&out_constraints).unwrap();
+    // mac.save("mac.alg",&out_constraints).unwrap();
     Register::dump(&mac,"mac.reg",reg_info).unwrap();
 }
+
+
+// 81 0.50 26'' 28''
+// 81 0.40 55''
+// 81 0.30 55''
+// 81 0.25      
+// 81 0.20 too long
+
 
 //     12                            4.3
 //     10                            6.0
@@ -469,3 +552,50 @@ fn main() {
 // A5/2 with known R4 and  256 bits of plaintext: takes 8'33'' for cryptominisat
 // A5/2 with known R4 and  512 bits of plaintext: takes 56'' for cryptominisat
 // A5/2 with known R4 and 1024 bits of plaintext: takes 37'48'' for cryptominisat
+
+
+// SEED 129837471234567
+// --------------------
+// A5/2 with unknown R4, 128 bits of plaintext, 50 helper bits: 1'52'' (inexact R3!)
+// A5/2 with unknown R4, 256 bits of plaintext, 45 helper bits: 4'11'' (inexact R3!)
+// A5/2 with unknown R4, 512 bits of plaintext, 45 helper bits: 7'12'' (inexact R3!)
+// A5/2 with unknown R4, 81 bits of plaintext, 45 helper bits: 1'18'' (inexact but pretty close R3!)
+// A5/2 with unknown R4, 81 bits of plaintext, 40 helper bits: 1'27'' (")
+// A5/2 with unknown R4, 81 bits of plaintext, 36 helper bits: 1'50'' (")
+// A5/2 with unknown R4, 81 bits of plaintext, 28 helper bits: 0'43'' (") !? reprod. 1
+// A5/2 with unknown R4, 81 bits of plaintext, 20 helper bits: 1'21'' (") !?
+// A5/2 with unknown R4, 81 bits of plaintext, 10 helper bits: 1'19'' (") !!
+// A5/2 with unknown R4, 81 bits of plaintext,  4 helper bits: XXXXX' (") !! >17'40''
+
+use cryptominisat::{Solver,Lit};
+// use cryptominisat::*;
+
+fn new_lit(var: u32, neg: bool) -> Lit {
+    Lit::new(var, neg).unwrap()
+}
+
+fn main4() {
+    let mut solver = Solver::new();
+    let mut clause = Vec::new();
+
+    solver.set_num_threads(4);
+    solver.new_vars(3);
+
+    clause.push(new_lit(0, false));
+    solver.add_clause(&clause);
+
+    clause.clear();
+    clause.push(new_lit(1, true));
+    solver.add_clause(&clause);
+
+    clause.clear();
+    clause.push(new_lit(0, true));
+    clause.push(new_lit(1, false));
+    clause.push(new_lit(2, false));
+    solver.add_clause(&clause);
+
+    let ret = solver.solve();
+}
+
+fn main() {
+}
