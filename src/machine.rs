@@ -205,7 +205,7 @@ impl Machine {
 		// (-x-y+z)(-x+y-z)(x-y-z)(x+y+z)
 		Gate::Binop(Op::Xor,x,y) => {
 		    if use_xor {
-			write!(fd,"x{} {} {} 0\n",pos(x),pos(y),neg(z));
+			write!(fd,"x{} {} {} 0\n",pos(x),pos(y),neg(z))?;
 		    } else {
 			write!(fd,"{} {} {} 0\n",pos(x),pos(y),neg(z))?;
 			write!(fd,"{} {} {} 0\n",pos(x),neg(y),pos(z))?;

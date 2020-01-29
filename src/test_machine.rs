@@ -13,6 +13,8 @@ use machine::Machine;
 use gate_soup::{GateSoup,Index};
 use bracket::Bracket;
 use cryptominisat::Lbool;
+use std::ops::Not;
+use std::collections::BTreeSet;
 
 #[derive(Copy,Clone)]
 struct Traffic<T> {
@@ -332,6 +334,11 @@ fn main_xtea() {
     // }
 }
 
+fn now()->f64 {
+    let dt = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap();
+    (dt.as_secs() as f64) + 1e-9*(dt.subsec_nanos() as f64)
+}
+
 fn main() {
     let mut mac = Machine::new();
     // let mut mac = Bracket::new();
@@ -400,7 +407,7 @@ fn main() {
     let maj = |a,b,c| mac.or(mac.or(mac.and(a,b),mac.and(a,c)),
 			     mac.and(b,c));
     
-    for t in 0..100*81 {
+    for t in 0..81 {
 	let f = mac.xor(r4.bit(16),r4.bit(11));
 	r4 = r4.rotate_left(1);
 	r4.set_bit(0,f);
@@ -476,7 +483,7 @@ fn main() {
     };
 
     let mut rnd_int = |n:usize| {
-	(rnd() * n as f64).floor() as usize
+	((rnd() * n as f64).floor() as usize).min(n-1)
     };
 
     let mut key = r1.clone();
@@ -486,20 +493,20 @@ fn main() {
 
     let m = key.len();
 
-    let mut set = Vec::new();
-    set.resize(m,false);
-    let mut i;
-    for k in 0..38 {
-	loop {
-	    i = rnd_int(m);
-	    if !set[i] {
-		break;
-	    }
-	}
-	set[i] = true;
-	let b = rnd_int(2) != 0;
-	out_constraints.push((key.bit(i),b));
-    }
+    // let mut set = Vec::new();
+    // set.resize(m,false);
+    // let mut i;
+    // for k in 0..38 {
+    // 	loop {
+    // 	    i = rnd_int(m);
+    // 	    if !set[i] {
+    // 		break;
+    // 	    }
+    // 	}
+    // 	set[i] = true;
+    // 	let b = rnd_int(2) != 0;
+    // 	out_constraints.push((key.bit(i),b));
+    // }
 
     // let mut o = mac.zero();
     // for l in 0..100 {
@@ -522,41 +529,156 @@ fn main() {
     // 	}
     // }
 
-    //out_constraints.append(&mut Vec::from(&mut in_constraints[0..40]));
+    //out_constraints.append(&mut Vec::from(&mut in_constraints[0..79]));
+    // out_constraints.append(&mut in_constraints.clone());
     // mac.save_cnf("mac.cnf",&out_constraints).unwrap();
     // mac.save("mac.alg",&out_constraints).unwrap();
     Register::dump(&mac,"mac.reg",reg_info).unwrap();
 
     let mut solver = mac.solver(&out_constraints);
+    // let p = solver.nvars() as usize;
+    let p = m;
     println!("Solving...");
+    let mut picked = Vec::new();
+    let mut selected = Vec::new();
+    let mut known = Vec::new();
+    let mut values = Vec::new();
+    let mut ass = Vec::new();
+    picked.resize(p,false);
+    known.resize(p,false);
+    values.resize(p,false);
+    let q = 18;
+    let mut i;
+    let mut found = 0;
+    let mut cnt = 0;
+    let mut seen = BTreeSet::new();
+    
+    let t_start = now();
     loop {
-	// Make some random assumptions
-	let mut ass = Vec::new();
-	let mut set = Vec::new();
-	set.resize(m,false);
-	let mut i;
-	for k in 0..1 {
-	    loop {
-		i = rnd_int(m);
-		if !set[i] {
-		    break;
-		}
+	if found >= p {
+	    break;
+	}
+	
+	let p = 18;
+
+	loop {
+	    // Make some random assumptions
+	    ass.clear();
+	    for i in 0..m {
+		picked[i] = false;
 	    }
-	    set[i] = true;
-	    let b = rnd_int(2) != 0;
-	    ass.push(Lit::new(key.bit(i),b).unwrap());
-	    println!("{}={}",i,b);
+	    // let p = rnd_int(q) + 1;
+
+	    selected.clear();
+	    for k in 0..p {
+		loop {
+		    i = rnd_int(p);
+		    if !picked[i] {
+			break;
+		    }
+		}
+		selected.push(i);
+		ass.push(Lit::new(key.bit(i),rnd_int(2) != 0).unwrap());
+		picked[i] = true;
+	    }
+	    let mut ass2 = ass.clone();
+	    ass2.sort();
+	    if !seen.contains(&ass2) {
+		seen.insert(ass2);
+		break;
+	    }
 	}
 
-	println!("Solving...");
-	solver.set_max_time(3.0);
+	// let u = key.bit(i);
+	// let u = i as u32;
+	
+	let max_time = 0.2;
+	solver.set_max_time(max_time);
+	let t0 = now();
 	let ret = solver.solve_with_assumptions(&ass);
+	let t1 = now();
+	let dt = t1 - t0;
+	// println!("{} {:?}",p,ret);
+	// print!("{:.3} ",dt);
 	match ret {
-	    Lbool::True => println!("True"),
-	    Lbool::False => println!("False"),
-	    Lbool::Undef => println!("Undef")
+	    Lbool::False => {
+		println!("F{} in {:.3}",p,dt);
+		if p == 1 {
+		    i = selected[0];
+		    let v = !ass[0].isneg();
+		    if !known[i] {
+			known[i] = true;
+			values[i] = v;
+			println!("Found bit {} = {}",i,v);
+			found += 1;
+		    } else {
+			if values[i] != v {
+			    panic!("Contradiction on bit {}, found {}, was {}",i,v,values[i]);
+			}
+		    }
+		} else {
+		    print!("NOT(");
+		    for k in 0..p {
+			print!(" k{:03}={}",selected[k],if ass[k].isneg() { 1 } else { 0 });
+		    }
+		    println!(" )");
+		}
+
+		let a : Vec<Lit> = ass.iter().map(|&l| !l).collect();
+		solver.add_clause(&a);
+		cnt += 1;
+		println!("CNT {}, APPROX EVERY {} s",cnt,(now() - t_start)/cnt as f64);
+	    },
+	    Lbool::Undef => {
+		// println!("U{}",p);
+	    }
+	    Lbool::True => {
+		println!("FOUND!");
+		break;
+	    }
 	}
+	// solver.set_max_time(max_time);
+	// let ret1 = solver.solve_with_assumptions(&ass1);
+	// println!("{:3}: {:?} {:?}",i,ret0,ret1);
+	// match (ret0,ret1) {
+	//     (Lbool::False,Lbool::Undef) | (Lbool::False,Lbool::True) => (),
+	//     (Lbool::Undef,Lbool::False) | (Lbool::True,Lbool::False) => (),
+	//     | _ => ()
+	// };
+	// if ret0 == Lbool::False {
+	//     println!("Eliminated");
+	//     ass.push(Lit::new(u,false).unwrap());
+	// } else {
+	//     solver.set_max_time(max_time);
+	//     let ret1 = solver.solve_with_assumptions(&ass1);
+	//     if ret1 == Lbool::False {
+	// 	println!("Bit {} must be false",i);
+	// 	known[i] = true;
+	// 	vals[i] = false;
+	// 	found += 1;
+	// 	ass.push(Lit::new(u,true).unwrap());
+	//     } else {
+	// 	println!("Could not determine bit {}",i);
+	//     }
+	// }
+
+
+	//     // Check...
+	//     println!("ASS1: {:?}",ret);
+
+	//     if ret == Lbool::False {
+	// 	println!("Inconsistent");
+	//     } else {
+	//     }
+	// } else {
+	// }
     }
+    // println!("RECOVERED KEY");
+    // println!("-------------");
+    // for i in 0..m {
+    // 	print!("{}",if known[i] { if vals[i] { '1' } else { '0' } } else { '?' });
+    // }
+    println!();
 }
 
 
