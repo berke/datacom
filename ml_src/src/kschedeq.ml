@@ -48,7 +48,7 @@ let _ =
   for rd = 1 to 10 do
     let i0 = 16 * (rd - 1) in
     let i1 = i0 + 16 in
-    let e0 = sbox (xor vs.(i0 + 3*4 + 1) (const z_round.(rd - 1))) in
+    let e0 = xor (sbox vs.(i0 + 3*4 + 1)) (const z_round.(rd - 1)) in
     let e1 = sbox vs.(i0 + 3*4 + 2) in
     let e2 = sbox vs.(i0 + 3*4 + 3) in
     let e3 = sbox vs.(i0 + 3*4 + 0) in
@@ -70,7 +70,7 @@ let _ =
     vs.(i1 + 12)  <- xor vs.(i1 + 8)  vs.(i0 + 12);
     vs.(i1 + 13)  <- xor vs.(i1 + 9)  vs.(i0 + 13);
     vs.(i1 + 14) <- xor vs.(i1 + 10)  vs.(i0 + 14);
-    vs.(i1 + 15) <- xor vs.(i1 + 12)  vs.(i0 + 15);
+    vs.(i1 + 15) <- xor vs.(i1 + 11)  vs.(i0 + 15);
   done;
   for i = 0 to Array.length vs - 1 do
     Printf.printf "%2d t%d %s\n" i vs.(i) (Sexp.to_string (sexp_of_term (IDM.find vs.(i) !idx)))
@@ -86,7 +86,7 @@ let _ =
               \n\
               extern const uint8_t sbox[256];\n\
               \n\
-              bool aes_verify_ks(const uint8_t *ks,int *failed) { \n\
+              bool aes_verify_ks(const uint8_t *ks,int *fail_t,int *fail_k,uint8_t *expected) { \n\
              \  uint8_t t[%d]; \n\
               \n" nt;
   let evaluated = Array.make nt false in
@@ -101,7 +101,7 @@ let _ =
         evaluated.(t) <- true;
         match IDM.find t !idx with
         | K k ->
-           fprintf oc "  t[%d] = ks[%d];\n" t k
+           fprintf oc "  t[%d] = ks[%d^3];\n" t k
         | C c ->
            fprintf oc "  t[%d] = %d;\n" t c
         | X(t1,t2) ->
@@ -114,7 +114,8 @@ let _ =
       )
   and verify t i =
     eval t;
-    fprintf oc "  if (ks[%d] != t[%d]) { *failed = %d; return false; }\n" i t t
+    fprintf oc "  if (ks[%d^3] != t[%d]) { *fail_t = %d; *fail_k = %d; *expected = t[%d]; return false; }\n"
+               i t t i t
   in
   for i = 0 to Array.length vs - 1 do
     verify vs.(i) i
