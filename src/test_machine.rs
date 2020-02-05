@@ -25,9 +25,7 @@ struct Traffic {
 }
 
 // const NROUND : usize = 1;
-const NROUND : usize = 1; // 5 works!
-const NTRAFFIC_BIT : usize = 4;
-const NTRAFFIC : usize = 1 << NTRAFFIC_BIT;
+const NROUND : usize = 8; // 5 works!
 
 struct BlockCipherModel<T> {
     x:T,
@@ -223,53 +221,98 @@ fn main()->Result<(),std::io::Error> {
     println!("Solving...");
     let p = key.len();
 
-    let max_time = 10.0;
+    let mut rnd = || {
+	xw.next() as f64 / ((1_u64 << 32) - 1) as f64
+    };
+    let mut rnd_int = |n:usize| {
+	((rnd() * n as f64).floor() as usize).min(n-1)
+    };
+
+    let max_time = 1000.0;
+    //let mut true_ass = Vec::new();
+    let mut tf_ass = Vec::new();
     let mut ass = Vec::new();
 
     println!("KEY REGS: {:?}",bcm.key);
     println!("KEY bit 127 is at {}",bcm.key.bit(127));
 
-    for Traffic{ x,y } in tf.iter() {
-	ass.clear();
-	for j in 0..x.len() {
-	    ass.push(Lit::new(bcm.x.bit(j),!x.get(j)).unwrap());
-	}
-	for j in 0..y.len() {
-	    ass.push(Lit::new(bcm.y.bit(j),!y.get(j)).unwrap());
-	}
-	for j in 0..key.len() {
-	    ass.push(Lit::new(bcm.key.bit(j),!key.get(j)).unwrap());
-	}
-	// solver.set_max_time(max_time);
-	println!("SOLVING...");
-	let ret = solver.solve_with_assumptions(&ass);
-	match ret {
- 	    Lbool::True => {
-		let md = Vec::from(solver.get_model());
-		let values = md.iter().map(|x| *x == Lbool::True).collect();
-		let undef : Vec<bool> = md.iter().map(|x| *x == Lbool::Undef).collect();
+    let mut picked = Vec::new();
+    picked.resize(p,false);
 
-		let x2 = bcm.x.value_as_bits(&values);
-		let y2 = bcm.y.value_as_bits(&values);
-		let key2 = bcm.key.value_as_bits(&values);
-		let x2_u = bcm.x.value_as_bits(&undef);
-		let y2_u = bcm.y.value_as_bits(&undef);
-		let key2_u = bcm.key.value_as_bits(&undef);
-		println!("K1:{:?}",key);
-		println!("K2:{:?}",key2);
-		println!("un {:?}",key2_u);
-		println!("X1:{:?}",x);
-		println!("X2:{:?}",x2);
-		println!("un {:?}",x2_u);
-		println!("Y1:{:?}",y);
-		println!("Y2:{:?}",y2);
-		println!("un {:?}",y2_u);
+    let mut selected = Vec::new();
+//     let mut known = Vec::new();
+//     let mut values = Vec::new();
+//     let mut ass = Vec::new();
+
+    let nass = 127;
+    
+    loop {
+	// Make some random assumptions about the key
+	ass.clear();
+	for i in 0..p {
+	    picked[i] = false;
+	}
+	selected.clear();
+'outer:	for _ in 0..nass {
+	    loop {
+		let i = rnd_int(p);
+		if !picked[i] {
+		    selected.push(i);
+		    ass.push(Lit::new(bcm.key.bit(i),rnd_int(2) != 0).unwrap());
+		    picked[i] = true;
+		    break 'outer;
+		}
 	    }
- 	    Lbool::False => {
-		println!("UNSAT");
-	    },
- 	    Lbool::Undef => {
-		println!("UNDEF");
+	}
+
+	// Try to solve using those assumptions
+
+	for Traffic{ x,y } in tf.iter() {
+	    // Traffic assumptions
+	    tf_ass.clear();
+	    tf_ass.append(&mut ass.clone());
+
+	    for j in 0..x.len() {
+		tf_ass.push(Lit::new(bcm.x.bit(j),!x.get(j)).unwrap());
+	    }
+	    // for j in 0..key.len() {
+	    // 	tf_ass.push(Lit::new(bcm.key.bit(j),!key.get(j)).unwrap());
+	    // }
+	    for j in 0..y.len() {
+		tf_ass.push(Lit::new(bcm.y.bit(j),!y.get(j)).unwrap());
+	    }
+
+	    solver.set_max_time(max_time);
+	    println!("SOLVING...");
+	    let ret = solver.solve_with_assumptions(&tf_ass);
+	    match ret {
+		Lbool::True => {
+		    let md = Vec::from(solver.get_model());
+		    let values = md.iter().map(|x| *x == Lbool::True).collect();
+		    let undef : Vec<bool> = md.iter().map(|x| *x == Lbool::Undef).collect();
+
+		    let x2 = bcm.x.value_as_bits(&values);
+		    let y2 = bcm.y.value_as_bits(&values);
+		    let key2 = bcm.key.value_as_bits(&values);
+		    let x2_u = bcm.x.value_as_bits(&undef);
+		    let y2_u = bcm.y.value_as_bits(&undef);
+		    let key2_u = bcm.key.value_as_bits(&undef);
+		    println!("K1:{:?}",key);
+		    println!("K2:{:?}",key2);
+		    println!("un {:?}",key2_u);
+		    println!("X1:{:?}",x);
+		    println!("X2:{:?}",x2);
+		    println!("un {:?}",x2_u);
+		    println!("Y1:{:?}",y);
+		    println!("Y2:{:?}",y2);
+		    println!("un {:?}",y2_u);
+		}
+		Lbool::False => {
+		    println!("UNSAT");
+		},
+ 		Lbool::Undef => {
+		    println!("UNDEF");
+		}
 	    }
 	}
     }
