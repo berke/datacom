@@ -1,4 +1,5 @@
 use crate::gate_soup::{Op,GateSoup,Index};
+use crate::bits::Bits;
 
 pub struct Register(Vec<Index>);
 
@@ -26,6 +27,12 @@ impl Register {
 	
     pub fn input<M:GateSoup>(mac:&M,n:Index)->Self {
 	Register( (0..n).map(|_k| mac.new_input()).collect() )
+    }
+
+    pub fn constant<M:GateSoup>(mac:&M,bits:usize,x:u64)->Self {
+	let zero = mac.zero();
+	let one = mac.one();
+	Register( (0..bits).map(|i| if (x >> (bits - 1 - i)) & 1 != 0 { one } else { zero }).collect() )
     }
 
     pub fn rotate_left(&self,s:usize)->Self {
@@ -98,6 +105,14 @@ impl Register {
 	Register(self.0.clone())
     }
 
+    pub fn join(self:&Self,other:&Self)->Self {
+	let Register(ref u) = self;
+	let Register(ref v) = other;
+	let mut u2 = u.clone();
+	u2.append(&mut v.clone());
+	Register(u2)
+    }
+
     pub fn append(self:&mut Self,other:&mut Self) {
 	let Register(ref mut u) = self;
 	let Register(ref mut v) = other;
@@ -107,6 +122,11 @@ impl Register {
     pub fn constraints(&self,x:u64)->Vec<(Index,bool)> {
 	let n = self.0.len();
 	self.0.iter().enumerate().map(|(i,&u)| (u,(x >> (n - 1 - i)) & 1 != 0)).collect()
+    }
+
+    pub fn constraints_from_bits(&self,x:&Bits)->Vec<(Index,bool)> {
+	let n = self.0.len();
+	self.0.iter().enumerate().map(|(i,&u)| (u,x.get(i))).collect()
     }
 
     pub fn value(&self,values:&Vec<bool>)->u64 {
@@ -119,6 +139,17 @@ impl Register {
 	    }
 	}
 	q
+    }
+
+    pub fn value_as_bits(&self,values:&Vec<bool>)->Bits {
+	let n = self.0.len();
+	let mut b = Bits::zero(n);
+	for i in 0..n {
+	    if values[self.0[i] as usize] {
+		b.set(i,true);
+	    }
+	}
+	b
     }
 
     pub fn decoder<M:GateSoup>(&self,mac:&mut M)->Self {
