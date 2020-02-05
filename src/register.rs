@@ -79,13 +79,10 @@ impl Register {
     }
 
     pub fn bit(&self,i:usize)->Index {
-	let Register(u) = &self;
-	let n = u.len();
-	u[i]
+	self.0[i]
     }
 
     pub fn set_bit(&mut self,i:usize,bit:Index) {
-	let n = self.0.len();
 	self.0[i] = bit;
     }
 
@@ -130,12 +127,10 @@ impl Register {
     }
 
     pub fn constraints(&self,x:u64)->Vec<(Index,bool)> {
-	let n = self.0.len();
 	self.0.iter().enumerate().map(|(i,&u)| (u,(x >> i) & 1 != 0)).collect()
     }
 
     pub fn constraints_from_bits(&self,x:&Bits)->Vec<(Index,bool)> {
-	let n = self.0.len();
 	self.0.iter().enumerate().map(|(i,&u)| (u,x.get(i))).collect()
     }
 

@@ -13,10 +13,10 @@ use bits::Bits;
 use register::Register;
 use machine::Machine;
 use gate_soup::{GateSoup,Index};
-use bracket::Bracket;
-use cryptominisat::{Solver,Lbool,Lit};
-use std::ops::Not;
-use std::collections::BTreeSet;
+// use bracket::Bracket;
+use cryptominisat::{Lbool,Lit};
+// use std::ops::Not;
+// use std::collections::BTreeSet;
 
 #[derive(Clone)]
 struct Traffic {
@@ -26,6 +26,7 @@ struct Traffic {
 
 // const NROUND : usize = 1;
 const NROUND : usize = 8; // 5 works!
+const NBLOCK : usize = 2;
 
 struct BlockCipherModel<T> {
     x:T,
@@ -37,16 +38,22 @@ fn jn(x0:u32,x1:u32)->u64 {
     ((x0 as u64) << 32) | x1 as u64
 }
 
-fn xtea_generate_traffic(xw:&mut Xorwow,key:[u32;4],n:usize)->Vec<Traffic> {
+fn xtea_generate_traffic(xw:&mut Xorwow,key:[u32;4],q:usize,n:usize)->Vec<Traffic> {
     let mut tf = Vec::new();
     for _ in 0..n {
-	let x0 = xw.next();
-	let x1 = xw.next();
-	let (y0,y1) = xtea::encipher((x0,x1),key,NROUND);
-	tf.push(Traffic{
-	    x:Bits::new64(jn(x0,x1)),
-	    y:Bits::new64(jn(y0,y1)),
-	});
+	let mut x = Bits::new();
+	let mut y = Bits::new();
+	for _j in 0..q {
+	    let x0 = xw.next();
+	    let x1 = xw.next();
+	    let (y0,y1) = xtea::encipher((x0,x1),key,NROUND);
+	    x.append_bits(32,x1 as u64);
+	    x.append_bits(32,x0 as u64);
+	    y.append_bits(32,y1 as u64);
+	    y.append_bits(32,y0 as u64);
+	}
+
+	tf.push(Traffic{ x,y });
     };
     tf
 }
@@ -84,7 +91,7 @@ fn trivial_xor_generate_traffic(xw:&mut Xorwow,key:[u32;4],n:usize)->Vec<Traffic
     let mut tf = Vec::new();
     let k0 = jn(key[2],key[3]);
     let k1 = jn(key[0],key[1]);
-    for i in 0..n {
+    for _i in 0..n {
 	let x0 = xw.next();
 	let x1 = xw.next();
 	// let x1 = 0;
@@ -101,76 +108,79 @@ fn trivial_xor_generate_traffic(xw:&mut Xorwow,key:[u32;4],n:usize)->Vec<Traffic
     tf
 }
 
-fn xtea_model<M:GateSoup>(mac:&mut M)->BlockCipherModel<Register> {
+fn xtea_model<M:GateSoup>(mac:&mut M,q:usize)->BlockCipherModel<Register> {
     let zero = mac.zero();
 
     let key = Register::input(mac,128);
-    let k3_r = key.slice(0,32);
-    let k2_r = key.slice(32,32);
-    let k1_r = key.slice(64,32);
-    let k0_r = key.slice(96,32);
-    let key_r = [k0_r,k1_r,k2_r,k3_r];
+    let k0_r = key.slice(0,32);
+    let k1_r = key.slice(32,32);
+    let k2_r = key.slice(64,32);
+    let k3_r = key.slice(96,32);
+    let key_r = [k3_r,k2_r,k1_r,k0_r];
 
-    let x = Register::input(mac,64);
-    let x0_r = x.slice(32,32);
-    let x1_r = x.slice(0,32);
+    let mut x = Register::input(mac,0);
+    let mut y = Register::input(mac,0);
 
-    let delta = 0x9e3779b9_u32;
+    for _j in 0..q {
+	let x0_r = Register::input(mac,32);
+	let x1_r = Register::input(mac,32);
 
-    let mut v0_r = x0_r.clone();
-    let mut v1_r = x1_r.clone();
-    let mut sum : u32 = 0;
+	let delta = 0x9e3779b9_u32;
 
-    let mut y0_r = x0_r.clone();
-    let mut y1_r = x1_r.clone();
-    
-    for r in 0..NROUND {
-	let sum_r = Register::constant(mac,32,sum as u64);
-	//       t3
-	//       ||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||
-	//       t2                                                                                   |
-	//       ||||||||||||||||||||||||||||||||||||||||||                                           |
-	//       |t1                                      |                                           |
-	//       ||||||||||||||||||||||||                 |                                           |
-	//       ||v1s4        v1s5     |                 |   s                                       |
-	//       |||||||||||   ||||||||||                 |   |||||||||||||||||||||||||||||||||||||||||
-	// v0 += (((v1 << 4) ^ (v1 >> 5)).wrapping_add(v1)) ^ (sum.wrapping_add(k[(sum & 3) as usize]));
-	// v0 += (((v1 << 4) ^ (v1 >> 5)).wrapping_add(v1)) ^ (sum.wrapping_add(k[(sum & 3) as usize]));
+	let mut v0_r = x0_r.clone();
+	let mut v1_r = x1_r.clone();
+	let mut sum : u32 = 0;
 
-	let v1s4 = v1_r.shift_left(4,zero);
-	let v1s5 = v1_r.shift_right(5,zero);
-	let t1 = v1s4.xor(mac,&v1s5);
-	let (t2,_) = t1.add(mac,&v1_r,zero);
+	for r in 0..NROUND {
+	    let sum_r = Register::constant(mac,32,sum as u64);
+	    //       t3
+	    //       ||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||
+	    //       t2                                                                                   |
+	    //       ||||||||||||||||||||||||||||||||||||||||||                                           |
+	    //       |t1                                      |                                           |
+	    //       ||||||||||||||||||||||||                 |                                           |
+	    //       ||v1s4        v1s5     |                 |   s                                       |
+	    //       |||||||||||   ||||||||||                 |   |||||||||||||||||||||||||||||||||||||||||
+	    // v0 += (((v1 << 4) ^ (v1 >> 5)).wrapping_add(v1)) ^ (sum.wrapping_add(k[(sum & 3) as usize]));
+	    // v0 += (((v1 << 4) ^ (v1 >> 5)).wrapping_add(v1)) ^ (sum.wrapping_add(k[(sum & 3) as usize]));
 
-	let (s,_) = key_r[(sum & 3) as usize].add(mac,&sum_r,zero);
+	    let v1s4 = v1_r.shift_left(4,zero);
+	    let v1s5 = v1_r.shift_right(5,zero);
+	    let t1 = v1s4.xor(mac,&v1s5);
+	    let (t2,_) = t1.add(mac,&v1_r,zero);
 
-	let t3 = t2.xor(mac,&s);
-	let (v0_r_bis,_) = v0_r.add(mac,&t3,zero);
-	v0_r = v0_r_bis;
+	    let (s,_) = key_r[(sum & 3) as usize].add(mac,&sum_r,zero);
 
-	sum = sum.wrapping_add(delta);
-	let sum_r = Register::constant(mac,32,sum as u64);
+	    let t3 = t2.xor(mac,&s);
+	    let (v0_r_bis,_) = v0_r.add(mac,&t3,zero);
+	    v0_r = v0_r_bis;
 
-	let v0s4 = v0_r.shift_left(4,zero);
-	let v0s5 = v0_r.shift_right(5,zero);
-	let t1 = v0s4.xor(mac,&v0s5);
-	let (t2,_) = t1.add(mac,&v0_r,zero);
+	    sum = sum.wrapping_add(delta);
+	    let sum_r = Register::constant(mac,32,sum as u64);
 
-	let (s,_) = key_r[((sum >> 11) & 3) as usize].add(mac,&sum_r,zero);
+	    let v0s4 = v0_r.shift_left(4,zero);
+	    let v0s5 = v0_r.shift_right(5,zero);
+	    let t1 = v0s4.xor(mac,&v0s5);
+	    let (t2,_) = t1.add(mac,&v0_r,zero);
 
-	let t3 = t2.xor(mac,&s);
-	let (v1_r_bis,_) = v1_r.add(mac,&t3,zero);
-	v1_r = v1_r_bis;
+	    let (s,_) = key_r[((sum >> 11) & 3) as usize].add(mac,&sum_r,zero);
 
-	if r + 1 == NROUND {
-	    y0_r = v0_r.clone();
-	    y1_r = v1_r.clone();
+	    let t3 = t2.xor(mac,&s);
+	    let (v1_r_bis,_) = v1_r.add(mac,&t3,zero);
+	    v1_r = v1_r_bis;
+
+	    if r + 1 == NROUND {
+		x.append(&mut x1_r.clone());
+		x.append(&mut x0_r.clone());
+		y.append(&mut v1_r.clone());
+		y.append(&mut v0_r.clone());
+	    }
 	}
     }
 
     BlockCipherModel{ 
-	x:x1_r.join(&x0_r),
-	y:y1_r.join(&y0_r),
+	x,
+	y,
 	key
     }
 }
@@ -188,13 +198,12 @@ fn main()->Result<(),std::io::Error> {
     // println!("  bit 31 : {}",b.get(31));
     // return Ok(());
     let mut mac = Machine::new();
-    let bcm = xtea_model(&mut mac);
+    let bcm = xtea_model(&mut mac,NBLOCK);
     // let bcm = trivial_xor_model(&mut mac);
-    let mut out_constraints : Vec<(Index,bool)> = Vec::new();
+    let out_constraints : Vec<(Index,bool)> = Vec::new();
     mac.dump("mac.dump")?;
     let mut xw = Xorwow::new(12345678);
     let key_words = [xw.next(),xw.next(),xw.next(),xw.next()];
-    // let key_words = [0,0,0,1];
     let key = Bits::concat(&vec![Bits::new32(key_words[3]),
 				 Bits::new32(key_words[2]),
 				 Bits::new32(key_words[1]),
@@ -202,7 +211,7 @@ fn main()->Result<(),std::io::Error> {
     let ntraffic = 100;
     println!("Executing self-test, traffic size: {}...",ntraffic);
     println!("Key: {:?}",key);
-    let tf = xtea_generate_traffic(&mut xw,key_words,ntraffic);
+    let tf = xtea_generate_traffic(&mut xw,key_words,NBLOCK,ntraffic);
     // let tf = trivial_xor_generate_traffic(&mut xw,key_words,ntraffic);
     for Traffic{ x, y } in tf.iter() {
 	let bcm2 = eval_model(&mut mac,&bcm,&x,&key);

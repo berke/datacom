@@ -89,7 +89,7 @@ impl Machine {
 	    let z = i0 as Index;
 	    match sp[i0] {
 		Gate::Zero => { let _ = solver.add_clause(&vec![neg(z)]); },
-		Gate::Input(i) => (),
+		Gate::Input(_) => (),
 		Gate::Not(x) => {
 		    let _ = solver.add_clause(&vec![pos(x),pos(z)]);
 		    let _ = solver.add_clause(&vec![neg(x),neg(z)]);

@@ -28,6 +28,9 @@ pub fn flip32(x:u32)->u32 {
 }
 
 impl Bits {
+    pub fn new()->Self {
+	Bits{ n:0,b:Vec::new() }
+    }
     pub fn new32(x:u32)->Self {
 	Bits{ n:32,b:vec![x as u64] }
     }
@@ -79,7 +82,8 @@ impl Bits {
 	    let s = r.min(m);
 	    // Push the s least significant bits of x
 	    // starting at position j
-	    self.b[k] = self.b[k] | (flip64(x & ((1 << s) - 1)) >> (64 - s - j));
+	    //self.b[k] = self.b[k] | (flip64(x & ((1 << s) - 1)) >> (64 - s - j));
+	    self.b[k] = self.b[k] | ((x & ((1 << s) - 1)) << j);
 	    x >>= s;
 	    m -= s;
 	    self.n += s;
