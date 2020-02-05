@@ -8,6 +8,7 @@ mod machine;
 mod xorwow;
 mod bracket;
 
+use std::cell::RefCell;
 use xorwow::Xorwow;
 use bits::Bits;
 use register::Register;
@@ -25,8 +26,7 @@ struct Traffic {
 }
 
 // const NROUND : usize = 1;
-const NROUND : usize = 2; // 5 works!
-const NBLOCK : usize = 2;
+const NROUND : usize = 5; // 5 works!
 
 struct BlockCipherModel<T> {
     x:T,
@@ -191,6 +191,18 @@ fn now()->f64 {
 }
 
 fn main()->Result<(),std::io::Error> {
+    let nblock = 2;
+    let ntraffic = 16384;
+    let n_make_it_easier = 128 - 40;
+    let nass_min = 1;
+    let nass_max = 40;
+    let full_every = 120.0;
+    let max_time_full = 20.0;
+    let random_assumptions = true;
+    let min_time = 0.05;
+    let max_time_start = 0.1;
+    let assume_every = 4;
+    let lengthen_factor = 1.001;
 
     // let mut b = Bits::new32(1);
     // println!("ONE {:?}",b);
@@ -198,7 +210,7 @@ fn main()->Result<(),std::io::Error> {
     // println!("  bit 31 : {}",b.get(31));
     // return Ok(());
     let mut mac = Machine::new();
-    let bcm = xtea_model(&mut mac,NBLOCK);
+    let bcm = xtea_model(&mut mac,nblock);
     // let bcm = trivial_xor_model(&mut mac);
     let out_constraints : Vec<(Index,bool)> = Vec::new();
     mac.dump("mac.dump")?;
@@ -208,12 +220,15 @@ fn main()->Result<(),std::io::Error> {
 				 Bits::new32(key_words[2]),
 				 Bits::new32(key_words[1]),
 				 Bits::new32(key_words[0])]);
-    let ntraffic = 32;
     println!("Executing self-test, traffic size: {}...",ntraffic);
     println!("Key: {:?}",key);
-    let tf = xtea_generate_traffic(&mut xw,key_words,NBLOCK,ntraffic);
+    let tf = xtea_generate_traffic(&mut xw,key_words,nblock,ntraffic);
     // let tf = trivial_xor_generate_traffic(&mut xw,key_words,ntraffic);
+    let ntraffic_test_max = 2;
+    let mut itraffic = 0;
     for Traffic{ x, y } in tf.iter() {
+	if itraffic > ntraffic_test_max { break; }
+	itraffic += 1;
 	let bcm2 = eval_model(&mut mac,&bcm,&x,&key);
 	let ok = |a:&Bits,b:&Bits| if *a == *b { "OK      " } else { "MISMATCH" };
 	if y != &bcm2.y {
@@ -230,15 +245,15 @@ fn main()->Result<(),std::io::Error> {
     println!("Solving...");
     let p = key.len();
 
+    let xw = RefCell::new(xw);
     let mut rnd = || {
-	xw.next() as f64 / ((1_u64 << 32) - 1) as f64
+	xw.borrow_mut().next() as f64 / ((1_u64 << 32) - 1) as f64
     };
     let mut rnd_int = |n:usize| {
 	((rnd() * n as f64).floor() as usize).min(n-1)
     };
 
-    let min_time = 0.1;
-    let mut max_time = 1.0;
+    let mut max_time = max_time_start;
     let mut tf_ass = Vec::new();
     let mut ass = Vec::new();
 
@@ -254,47 +269,66 @@ fn main()->Result<(),std::io::Error> {
 //     let mut values = Vec::new();
 //     let mut ass = Vec::new();
 
-    let nass = 8;
     let mut num_added_clauses = 0;
+    let mut num_added_clauses_full = 0;
     let t_start = now();
     let mut cnt : usize = 0;
     let mut total : usize = 0;
-    let full_every = 20.0;
-    let max_time_full = 3.0;
-    let mut t_last_full = t_start - full_every;
+    let mut t_last_full = 0.0;
+    let mut first = true;
 
-    // Add some known key bits
-    let n_make_it_easier = 100;
-    for j in 0..n_make_it_easier {
-	tf_ass.push(Lit::new(bcm.key.bit(j),!key.get(j)).unwrap());
-    }
+    let mut kass = 0;
+    let mut iassume = 0;
+
+    let mut itraf = 0;
     
     'main: loop {
-	loop {
-	    // Make some random assumptions about the key
-	    ass.clear();
-	    for i in 0..p {
-		picked[i] = false;
-	    }
-	    selected.clear();
-	    for _ in 0..nass {
-		'inner: loop {
-		    let i = n_make_it_easier + rnd_int(p - n_make_it_easier);
-		    if !picked[i] {
-			selected.push(i);
-			ass.push(Lit::new(bcm.key.bit(i),rnd_int(2) != 0).unwrap());
-			picked[i] = true;
-			break 'inner;
+	iassume += 1;
+	if iassume == assume_every {
+	    iassume = 0;
+	    if random_assumptions {
+		loop {
+		    let nass = nass_min + (((nass_max - nass_min) as f64).ln() * rnd()).exp().floor() as usize;
+		    let nass = nass_max.min(nass_min.max(nass));
+		    // let nass = nass_min + rnd_int(nass_max - nass_min);
+		    // Make some random assumptions about the key
+		    ass.clear();
+		    let mut npicked = 0;
+		    for i in 0..p {
+			picked[i] = false;
+		    }
+		    selected.clear();
+		    for assi in 0..nass {
+			'inner: loop {
+			    let i = n_make_it_easier + rnd_int(p - n_make_it_easier);
+			    if !picked[i] {
+				selected.push(i);
+				ass.push(Lit::new(bcm.key.bit(i),rnd_int(2) != 0).unwrap());
+				picked[i] = true;
+				npicked += 1;
+				break 'inner;
+			    }
+			}
+		    }
+		    // See if it has already been processed
+		    let mut ass2 = ass.clone();
+		    ass2.sort();
+		    if !seen.contains(&ass2) {
+			println!("NCLADD: {}, NASS:{}. ASS:{:?}",num_added_clauses,nass,ass2);
+			seen.insert(ass2);
+			break;
 		    }
 		}
-	    }
-	    // See if it has already been processed
-	    let mut ass2 = ass.clone();
-	    ass2.sort();
-	    if !seen.contains(&ass2) {
-		println!("ASS: {:?}, NCLADD: {}",ass2,num_added_clauses);
-		seen.insert(ass2);
-		break;
+	    } else {
+		println!("ASS: {:08b}, NCLADD: {}",kass,num_added_clauses);
+		let mut kk = kass;
+		ass.clear();
+		for i in 0..nass_min {
+		    ass.push(Lit::new(bcm.key.bit(i),kk & 1 != 0).unwrap());
+		    selected.push(i);
+		    kk >>= 1;
+		}
+		kass += 1;
 	    }
 	}
 
@@ -321,235 +355,85 @@ fn main()->Result<(),std::io::Error> {
 	    println!("un {:?}",y2_u);
 	};
 
-	for (itraf,Traffic{ x,y }) in tf.iter().enumerate() {
-	    // Traffic assumptions
-	    tf_ass.clear();
-
-	    for j in 0..x.len() {
-		tf_ass.push(Lit::new(bcm.x.bit(j),!x.get(j)).unwrap());
-	    }
-	    for j in 0..y.len() {
-		tf_ass.push(Lit::new(bcm.y.bit(j),!y.get(j)).unwrap());
-	    }
-
-	    if t_last_full + full_every <= now() {
-		println!("SOLVING full on traffic {}/{}",itraf,ntraffic);
-		solver.set_max_time(max_time_full);
-		let ret = solver.solve_with_assumptions(&tf_ass);
-		t_last_full = now();
-		match ret {
-		    Lbool::True => {
-			let md = Vec::from(solver.get_model());
-			found_it(md);
-			break 'main;
-		    },
-		    Lbool::False => {
-			panic!("Contradiction");
-		    },
-		    _ => ()
-		}
-	    }
+	let itraf = rnd_int(tf.len());
+	let Traffic{ x,y } = &tf[itraf];
 	
-	    tf_ass.append(&mut ass.clone());
+	// Traffic assumptions
+	tf_ass.clear();
 
-	    solver.set_max_time(max_time);
-	    println!("SOLVING traffic {}/{}...",itraf,ntraffic);
-	    let t0 = now() - t_start;
+	// Add some known key bits
+	for j in 0..n_make_it_easier {
+	    tf_ass.push(Lit::new(bcm.key.bit(j),!key.get(j)).unwrap());
+	}
+
+	for j in 0..x.len() {
+	    tf_ass.push(Lit::new(bcm.x.bit(j),!x.get(j)).unwrap());
+	}
+	for j in 0..y.len() {
+	    tf_ass.push(Lit::new(bcm.y.bit(j),!y.get(j)).unwrap());
+	}
+
+	if first || (t_last_full + full_every <= now() && num_added_clauses > num_added_clauses_full) {
+	    first = false;
+	    println!("SOLVING full on traffic {}/{}",itraf,ntraffic);
+	    solver.set_max_time(max_time_full);
 	    let ret = solver.solve_with_assumptions(&tf_ass);
-	    let t1 = now() - t_start;
-	    total += 1;
-	    let dt = t1 - t0;
+	    t_last_full = now();
+	    num_added_clauses_full = num_added_clauses;
 	    match ret {
 		Lbool::True => {
 		    let md = Vec::from(solver.get_model());
 		    found_it(md);
 		    break 'main;
-		}
-		Lbool::False => {
-		    // Nice, found a false assumption
-		    println!("F{} in {:.3}/{:.3}",nass,dt,max_time);
-		    max_time = (0.9 * max_time + 0.1 * 1.5 * dt).max(min_time);
-		    println!("UNSAT");
-
-		    print!("NOT(");
-		    for k in 0..nass {
-			print!(" k{:03}={}",selected[k],if ass[k].isneg() { 1 } else { 0 });
-		    }
-		    println!(" )");
-		    let a : Vec<Lit> = ass.iter().map(|&l| !l).collect();
-		    solver.add_clause(&a);
-		    num_added_clauses += 1;
-		    cnt += 1;
-		    let rate = (now() - t_start)/cnt as f64;
-		    println!("CNT {}, APPROX EVERY {} s OR EVERY {} SOLVE, ETA {} h",cnt,rate,
-			     total as f64/cnt as f64,
-			     rate * (1 << nass) as f64 / 3600.0); // XXX
 		},
- 		Lbool::Undef => {
-		    max_time *= 1.01
+		Lbool::False => {
+		    panic!("Contradiction");
+		},
+		_ => ()
+	    }
+	}
+	
+	tf_ass.append(&mut ass.clone());
+
+	solver.set_max_time(max_time);
+	println!("SOLVING traffic {}/{} max_time={}...",itraf,ntraffic,max_time);
+	let t0 = now() - t_start;
+	let ret = solver.solve_with_assumptions(&tf_ass);
+	let t1 = now() - t_start;
+	total += 1;
+	let dt = t1 - t0;
+	println!("dt={} ret={:?}",dt,ret);
+	match ret {
+	    Lbool::True => {
+		let md = Vec::from(solver.get_model());
+		found_it(md);
+		break 'main;
+	    }
+	    Lbool::False => {
+		// Nice, found a false assumption
+		let nass = ass.len();
+		println!("F{} in {:.3}/{:.3}",nass,dt,max_time);
+		max_time = (0.9 * max_time + 0.1 * 1.5 * dt).max(min_time);
+		println!("UNSAT");
+
+		print!("NOT(");
+		for k in 0..nass {
+		    print!(" k{:03}={}",selected[k],if ass[k].isneg() { 1 } else { 0 });
 		}
+		println!(" )");
+		let a : Vec<Lit> = ass.iter().map(|&l| !l).collect();
+		solver.add_clause(&a);
+		num_added_clauses += 1;
+		cnt += 1;
+		let rate = (now() - t_start)/cnt as f64;
+		println!("CNT {}, APPROX EVERY {} s OR EVERY {} SOLVE, ETA {} h",cnt,rate,
+			 total as f64/cnt as f64,
+			 rate * (1 << nass) as f64 / 3600.0); // XXX
+	    },
+	    Lbool::Undef => {
+		max_time *= lengthen_factor;
 	    }
 	}
     }
     Ok(())
 }
-
-    
-
-
-//     let mut picked = Vec::new();
-//     let mut selected = Vec::new();
-//     let mut known = Vec::new();
-//     let mut values = Vec::new();
-//     let mut ass = Vec::new();
-//     picked.resize(p,false);
-//     known.resize(p,false);
-//     values.resize(p,false);
-//     let q = 18;
-//     let mut i;
-//     let mut found = 0;
-//     let mut cnt = 0;
-//     let mut seen = BTreeSet::new();
-//     let mut total = 0;
-    
-//     let mut max_time = 0.2;
-//     let p = 18;
-
-//     let mut qe = QuadraticEstimator::new();
-
-//     let t_start = now();
-//     loop {
-// 	if found >= p {
-// 	    break;
-// 	}
-	
-
-// 	loop {
-// 	    // Make some random assumptions
-// 	    ass.clear();
-// 	    for i in 0..m {
-// 		picked[i] = false;
-// 	    }
-// 	    // let p = rnd_int(q) + 1;
-
-// 	    selected.clear();
-// 	    for k in 0..p {
-// 		loop {
-// 		    i = rnd_int(p);
-// 		    if !picked[i] {
-// 			break;
-// 		    }
-// 		}
-// 		selected.push(i);
-// 		ass.push(Lit::new(key.bit(i),rnd_int(2) != 0).unwrap());
-// 		picked[i] = true;
-// 	    }
-// 	    let mut ass2 = ass.clone();
-// 	    ass2.sort();
-// 	    if !seen.contains(&ass2) {
-// 		seen.insert(ass2);
-// 		break;
-// 	    }
-// 	}
-
-// 	// let u = key.bit(i);
-// 	// let u = i as u32;
-	
-// 	solver.set_max_time(max_time);
-// 	let t0 = now() - t_start;
-// 	let ret = solver.solve_with_assumptions(&ass);
-// 	let t1 = now() - t_start;
-// 	total += 1;
-// 	let dt = t1 - t0;
-// 	// println!("{} {:?}",p,ret);
-// 	// print!("{:.3} ",dt);
-// 	match ret {
-// 	    Lbool::False => {
-// 		println!("F{} in {:.3}/{:.3}",p,dt,max_time);
-// 		max_time = 0.9 * max_time + 0.1 * 1.5 * dt;
-// 		if p == 1 {
-// 		    i = selected[0];
-// 		    let v = !ass[0].isneg();
-// 		    if !known[i] {
-// 			known[i] = true;
-// 			values[i] = v;
-// 			println!("Found bit {} = {}",i,v);
-// 			found += 1;
-// 		    } else {
-// 			if values[i] != v {
-// 			    panic!("Contradiction on bit {}, found {}, was {}",i,v,values[i]);
-// 			}
-// 		    }
-// 		} else {
-// 		    print!("NOT(");
-// 		    for k in 0..p {
-// 			print!(" k{:03}={}",selected[k],if ass[k].isneg() { 1 } else { 0 });
-// 		    }
-// 		    println!(" )");
-// 		}
-
-// 		let a : Vec<Lit> = ass.iter().map(|&l| !l).collect();
-// 		solver.add_clause(&a);
-// 		cnt += 1;
-// 		qe.push(t1,cnt as f64);
-// 		let rate = (now() - t_start)/cnt as f64;
-// 		println!("CNT {}, APPROX EVERY {} s OR EVERY {} SOLVE, ETA {} h",cnt,rate,
-// 			 total as f64/cnt as f64,
-// 			 rate * (1 << p) as f64 / 3600.0);
-// 		match qe.solve_for_t((1 << p) as f64) {
-// 		    None => (),
-// 		    Some(t) => println!("ETA {} h",t/3600.0)
-// 		}
-// 	    },
-// 	    Lbool::Undef => {
-// 		max_time *= 1.01
-// 		// println!("U{}",p);
-// 	    }
-// 	    Lbool::True => {
-// 		println!("FOUND!");
-// 		break;
-// 	    }
-// 	}
-// 	// solver.set_max_time(max_time);
-// 	// let ret1 = solver.solve_with_assumptions(&ass1);
-// 	// println!("{:3}: {:?} {:?}",i,ret0,ret1);
-// 	// match (ret0,ret1) {
-// 	//     (Lbool::False,Lbool::Undef) | (Lbool::False,Lbool::True) => (),
-// 	//     (Lbool::Undef,Lbool::False) | (Lbool::True,Lbool::False) => (),
-// 	//     | _ => ()
-// 	// };
-// 	// if ret0 == Lbool::False {
-// 	//     println!("Eliminated");
-// 	//     ass.push(Lit::new(u,false).unwrap());
-// 	// } else {
-// 	//     solver.set_max_time(max_time);
-// 	//     let ret1 = solver.solve_with_assumptions(&ass1);
-// 	//     if ret1 == Lbool::False {
-// 	// 	println!("Bit {} must be false",i);
-// 	// 	known[i] = true;
-// 	// 	vals[i] = false;
-// 	// 	found += 1;
-// 	// 	ass.push(Lit::new(u,true).unwrap());
-// 	//     } else {
-// 	// 	println!("Could not determine bit {}",i);
-// 	//     }
-// 	// }
-
-
-// 	//     // Check...
-// 	//     println!("ASS1: {:?}",ret);
-
-// 	//     if ret == Lbool::False {
-// 	// 	println!("Inconsistent");
-// 	//     } else {
-// 	//     }
-// 	// } else {
-// 	// }
-//     }
-//     // println!("RECOVERED KEY");
-//     // println!("-------------");
-//     // for i in 0..m {
-//     // 	print!("{}",if known[i] { if vals[i] { '1' } else { '0' } } else { '?' });
-//     // }
-//     println!();
-
