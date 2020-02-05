@@ -107,15 +107,15 @@ fn xtea_model<M:GateSoup>(mac:&mut M)->BlockCipherModel<Register> {
     let zero = mac.zero();
 
     let key = Register::input(mac,128);
-    let k0_r = key.slice(0,32);
-    let k1_r = key.slice(32,32);
-    let k2_r = key.slice(64,32);
-    let k3_r = key.slice(96,32);
+    let k3_r = key.slice(0,32);
+    let k2_r = key.slice(32,32);
+    let k1_r = key.slice(64,32);
+    let k0_r = key.slice(96,32);
     let key_r = [k0_r,k1_r,k2_r,k3_r];
 
     let x = Register::input(mac,64);
-    let x0_r = x.slice(0,32);
-    let x1_r = x.slice(32,32);
+    let x0_r = x.slice(32,32);
+    let x1_r = x.slice(0,32);
 
     let delta = 0x9e3779b9_u32;
 
@@ -171,8 +171,8 @@ fn xtea_model<M:GateSoup>(mac:&mut M)->BlockCipherModel<Register> {
     }
 
     BlockCipherModel{ 
-	x:x0_r.join(&x1_r),
-	y:y0_r.join(&y1_r),
+	x:x1_r.join(&x0_r),
+	y:y1_r.join(&y0_r),
 	key
     }
 }
@@ -190,8 +190,8 @@ fn main()->Result<(),std::io::Error> {
     // println!("  bit 31 : {}",b.get(31));
     // return Ok(());
     let mut mac = Machine::new();
-    //let bcm = xtea_model(&mut mac);
-    let bcm = trivial_xor_model(&mut mac);
+    let bcm = xtea_model(&mut mac);
+    // let bcm = trivial_xor_model(&mut mac);
     let mut out_constraints : Vec<(Index,bool)> = Vec::new();
     mac.dump("mac.dump")?;
     let mut xw = Xorwow::new(12345678);
@@ -204,8 +204,8 @@ fn main()->Result<(),std::io::Error> {
     let ntraffic = 100;
     println!("Executing self-test, traffic size: {}...",ntraffic);
     println!("Key: {:?}",key);
-    //let tf = xtea_generate_traffic(&mut xw,key_words,ntraffic);
-    let tf = trivial_xor_generate_traffic(&mut xw,key_words,ntraffic);
+    let tf = xtea_generate_traffic(&mut xw,key_words,ntraffic);
+    // let tf = trivial_xor_generate_traffic(&mut xw,key_words,ntraffic);
     for Traffic{ x, y } in tf.iter() {
 	let bcm2 = eval_model(&mut mac,&bcm,&x,&key);
 	let ok = |a:&Bits,b:&Bits| if *a == *b { "OK      " } else { "MISMATCH" };
