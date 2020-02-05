@@ -25,7 +25,7 @@ struct Traffic {
 }
 
 // const NROUND : usize = 1;
-const NROUND : usize = 1; // 5 works!
+const NROUND : usize = 32; // 5 works!
 const NTRAFFIC_BIT : usize = 4;
 const NTRAFFIC : usize = 1 << NTRAFFIC_BIT;
 
@@ -175,28 +175,28 @@ fn now()->f64 {
 fn main()->Result<(),std::io::Error> {
     let mut mac = Machine::new();
     let bcm = xtea_model(&mut mac);
-    // let bcm = trivial_xor_model(&mut mac);
     let mut out_constraints : Vec<(Index,bool)> = Vec::new();
     mac.dump("mac.dump")?;
     let mut xw = Xorwow::new(12345678);
     let key = [xw.next(),xw.next(),xw.next(),xw.next()];
-    // let key = [8,4,2,1];
     let key_bits = Bits::concat(&vec![Bits::new32(key[0]),
 				      Bits::new32(key[1]),
 				      Bits::new32(key[2]),
 				      Bits::new32(key[3])]);
-    let tf = xtea_generate_traffic(&mut xw,key,50);
-    // let tf = trivial_xor_generate_traffic(&mut xw,key,50);
-    println!("KEY   {:?}\n",key_bits);
+    let ntraffic = 50;
+    println!("Executing self-test, traffic size: {}...",ntraffic);
+    println!("Key: {:?}",key_bits);
+    let tf = xtea_generate_traffic(&mut xw,key,ntraffic);
     for Traffic{ x, y } in tf.iter() {
 	let bcm2 = eval_model(&mut mac,&bcm,&x,&key_bits);
+	let ok = |a:&Bits,b:&Bits| if *a == *b { "OK      " } else { "MISMATCH" };
 	if y != &bcm2.y {
-	    println!("TF x ={:?}\n   y ={:?}\n   y2={:?}",x,y,bcm2.y);
-	    println!("X   {:?}",bcm2.x);
-	    println!("Y   {:?}",bcm2.y);
-	    println!("KEY {:?}",bcm2.key);
-	    break;
+	    println!("{} X   {:?} vs {:?}\n",ok(x,&bcm2.x),x,bcm2.x);
+	    println!("{} Y   {:?} vs {:?}\n",ok(y,&bcm2.y),y,bcm2.y);
+	    println!("{} KEY {:?} vs {:?}\n",ok(&key_bits,&bcm2.key),key_bits,bcm2.key);
+	    panic!("Self-test failed");
 	}
     }
+    println!("All good.");
     Ok(())
 }
