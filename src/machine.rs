@@ -89,7 +89,7 @@ impl Machine {
 	    let z = i0 as Index;
 	    match sp[i0] {
 		Gate::Zero => { let _ = solver.add_clause(&vec![neg(z)]); },
-		Gate::Input(_) => (),
+		Gate::Input(i) => (),
 		Gate::Not(x) => {
 		    let _ = solver.add_clause(&vec![pos(x),pos(z)]);
 		    let _ = solver.add_clause(&vec![neg(x),neg(z)]);
@@ -108,7 +108,9 @@ impl Machine {
 		},
 		Gate::Binop(Op::Xor,x,y) => {
 		    if use_xor {
-			let _ = solver.add_xor_literal_clause(&vec![pos(x),pos(y),neg(z)],false);
+			// z = x ^ y
+			// x ^ y ^ z = 0
+			let _ = solver.add_xor_literal_clause(&vec![pos(x),pos(y),pos(z)],false);
 		    } else {
 			let _ = solver.add_clause(&vec![pos(x),pos(y),neg(z)]);
 			let _ = solver.add_clause(&vec![pos(x),neg(y),pos(z)]);

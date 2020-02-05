@@ -9,9 +9,9 @@ edition = "2018"
 [dependencies]
 cryptominisat = { path = "/home/alpha/compile/cryptominisat/rust" }
 
-[[bin]]
-name = "des"
-path = "src/des.rs"
+# [[bin]]
+# name = "des"
+# path = "src/des.rs"
 
 [[bin]]
 name = "test_machine"

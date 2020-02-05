@@ -29,14 +29,18 @@ pub fn flip32(x:u32)->u32 {
 
 impl Bits {
     pub fn new32(x:u32)->Self {
-	Bits{ n:32,b:vec![flip32(x) as u64] }
+	Bits{ n:32,b:vec![x as u64] }
     }
     pub fn new64(x:u64)->Self {
-	Bits{ n:64,b:vec![flip64(x)] }
+	Bits{ n:64,b:vec![x] }
     }
     // pub fn new128(x:u128)->Self {
     // 	Bits{ n:128,b:vec![(x >> 64) as u64,(x & ((1_u128<<64) - 1)) as u64] }
     // }
+
+    pub fn len(&self)->usize {
+	self.n
+    }
     pub fn zero(n:usize)->Self {
 	let mut b = Vec::new();
 	b.resize((n+63)>>6,0);
@@ -52,6 +56,34 @@ impl Bits {
 	    self.b.push(if b { 1 } else { 0 })
 	}
 	self.n += 1;
+    }
+    pub fn append_bits(&mut self,mut m:usize,mut x:u64) {
+	let mut j;
+	let mut k;
+	let mut r; // Number of bits remaining in last word
+	loop {
+	    if m == 0 {
+		// No more bits to append
+		return;
+	    }
+	    j = self.n & 63;
+	    k = self.n >> 6;
+	    if j == 0 {
+		// No bits remaining in the last word
+		self.b.push(0);
+		r = 64;
+	    } else {
+		r = 64 - j;
+	    }
+	    // Determine how many bits we can push
+	    let s = r.min(m);
+	    // Push the s least significant bits of x
+	    // starting at position j
+	    self.b[k] = self.b[k] | (flip64(x & ((1 << s) - 1)) >> (64 - s - j));
+	    x >>= s;
+	    m -= s;
+	    self.n += s;
+	}
     }
     pub fn get(&self,i:usize)->bool {
 	if i >= self.n {
@@ -87,7 +119,7 @@ impl Bits {
 impl fmt::Debug for Bits {
     fn fmt(&self,f:&mut fmt::Formatter<'_>)->fmt::Result {
 	for j in 0..self.n {
-	    write!(f,"{}",if self.get(j) { 1 } else { 0 })?
+	    write!(f,"{}",if self.get(self.n - 1 - j) { 1 } else { 0 })?
 	}
 	Ok(())
     }
@@ -99,6 +131,48 @@ impl PartialEq for Bits {
 	    self.b.iter().zip(other.b.iter()).all(|(x,y)| x == y)
 	} else {
 	    false
+	}
+    }
+}
+
+#[test]
+fn test_bits() {
+    let mut b = Bits::zero(0);
+    let s = [3_usize,1,4,1,5,9,2,6,5,3,5,9];
+    let mut bs = Vec::new();
+    let mut x = true;
+    for _ in 0..10 {
+	for &si in s.iter() {
+	    let bit = if x { !0 } else { 0 };
+	    b.append_bits(si,bit);
+	    for _ in 0..si {
+		bs.push(x);
+	    }
+	    x = !x;
+	}
+    }
+    let n = b.len();
+    let ns = bs.len();
+    if n != ns {
+	panic!("Mismatch on length: n={} vs ns={}",n,ns);
+    }
+    for i in 0..n {
+	if b.get(i) != bs[i] {
+	    panic!("Mismatch on bit {}: {} vs {}",i,b.get(i),bs[i]);
+	}
+    }
+    let mut xw = crate::xorwow::Xorwow::new(1);
+    for _ in 0..100 {
+	for k in 0..10000 {
+	    let i = xw.next() as usize % n;
+	    let bit = (xw.next() & 1) != 0;
+	    b.set(i,bit);
+	    bs[i] = bit;
+	}
+	for i in 0..n {
+	    if b.get(i) != bs[i] {
+		panic!("Mismatch on bit {}: {} vs {}",i,b.get(i),bs[i]);
+	    }
 	}
     }
 }

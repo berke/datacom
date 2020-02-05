@@ -1,3 +1,7 @@
+// Registers are now stored LEAST significant bit first!
+
+use std::fmt;
+
 use crate::gate_soup::{Op,GateSoup,Index};
 use crate::bits::Bits;
 
@@ -32,16 +36,22 @@ impl Register {
     pub fn constant<M:GateSoup>(mac:&M,bits:usize,x:u64)->Self {
 	let zero = mac.zero();
 	let one = mac.one();
-	Register( (0..bits).map(|i| if (x >> (bits - 1 - i)) & 1 != 0 { one } else { zero }).collect() )
+	Register( (0..bits).map(|i| if (x >> i) & 1 != 0 { one } else { zero }).collect() )
     }
 
-    pub fn rotate_left(&self,s:usize)->Self {
+    pub fn rotate_right(&self,s:usize)->Self {
 	let Register(v) = &self;
 	let n = v.len();
 	Register( (0..n).map(|k| v[(k + s) % n]).collect())
     }
 
-    pub fn shift_left(&self,s:usize,zero:Index)->Self {
+    pub fn rotate_left(&self,s:usize)->Self {
+	let Register(v) = &self;
+	let n = v.len();
+	Register( (0..n).map(|k| v[(k + n - s) % n]).collect())
+    }
+
+    pub fn shift_right(&self,s:usize,zero:Index)->Self {
 	let Register(v) = &self;
 	let n = v.len();
 	Register( (0..n).map(|k| if k + s < n { v[k + s] } else { zero }).collect())
@@ -51,7 +61,7 @@ impl Register {
 	self.0.len()
     }
 
-    pub fn shift_right(&self,s:usize,zero:Index)->Self {
+    pub fn shift_left(&self,s:usize,zero:Index)->Self {
 	let Register(v) = &self;
 	let n = v.len();
 	Register( (0..n).map(|k| if k >= s { v[k - s] } else { zero }).collect())
@@ -71,12 +81,12 @@ impl Register {
     pub fn bit(&self,i:usize)->Index {
 	let Register(u) = &self;
 	let n = u.len();
-	u[n - 1 - i]
+	u[i]
     }
 
     pub fn set_bit(&mut self,i:usize,bit:Index) {
 	let n = self.0.len();
-	self.0[n - 1 - i] = bit;
+	self.0[i] = bit;
     }
 
     pub fn scale<M:GateSoup>(&self,mac:&M,bit:Index)->Self {
@@ -121,7 +131,7 @@ impl Register {
 
     pub fn constraints(&self,x:u64)->Vec<(Index,bool)> {
 	let n = self.0.len();
-	self.0.iter().enumerate().map(|(i,&u)| (u,(x >> (n - 1 - i)) & 1 != 0)).collect()
+	self.0.iter().enumerate().map(|(i,&u)| (u,(x >> i) & 1 != 0)).collect()
     }
 
     pub fn constraints_from_bits(&self,x:&Bits)->Vec<(Index,bool)> {
@@ -133,9 +143,8 @@ impl Register {
 	let mut q = 0;
 	let n = self.0.len();
 	for i in 0..n {
-	    q <<= 1;
 	    if values[self.0[i] as usize] {
-		q |= 1;
+		q |= 1 << i;
 	    }
 	}
 	q
@@ -216,17 +225,18 @@ impl Register {
 	} else {
 	    let p = n / 2;
 	    let q = n - p;
-	    // self  ->   [u0 u1]
-	    // other ->   [v0 v1]
-	    //       -> c [w0 w1] carry
+	    //         MSB       LSB
+	    // self  ->   [u1 u0]
+	    // other ->   [v1 v0]
+	    //       -> c [w1 w0] carry
 	    let u0 = self.slice(0,p);
 	    let v0 = other.slice(0,p);
 	    let u1 = self.slice(p,q);
 	    let v1 = other.slice(p,q);
-	    let (mut w1,c1) = u1.add(mac,&v1,carry);
-	    let (mut w0,c0) = u0.add(mac,&v0,c1);
+	    let (mut w0,c0) = u0.add(mac,&v0,carry);
+	    let (mut w1,c1) = u1.add(mac,&v1,c0);
 	    w0.append(&mut w1);
-	    (w0,c0)
+	    (w0,c1)
 	};
 	res
     }
@@ -249,5 +259,19 @@ impl Register {
 		mac.and(x0,x1)
 	    }
 	}
+    }
+}
+
+impl fmt::Debug for Register {
+    fn fmt(&self,f:&mut fmt::Formatter<'_>)->fmt::Result {
+	let Register(u) = &self;
+	let n = u.len();
+	write!(f,"[")?;
+	for j in 0..n {
+	    if j > 0 { write!(f,",")?; }
+	    write!(f,"{}",u[n-1-j])?;
+	}
+	write!(f,"]")?;
+	Ok(())
     }
 }
