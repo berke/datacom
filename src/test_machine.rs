@@ -339,6 +339,63 @@ fn now()->f64 {
     (dt.as_secs() as f64) + 1e-9*(dt.subsec_nanos() as f64)
 }
 
+struct QuadraticEstimator {
+    t:[f64;3],
+    f:[f64;3],
+    n:usize,
+    i:usize
+}
+
+impl QuadraticEstimator {
+    pub fn new()->Self {
+	QuadraticEstimator{
+	    t:[0.0;3],
+	    f:[0.0;3],
+	    n:0,
+	    i:0
+	}
+    }
+    pub fn push(&mut self,t:f64,f:f64) {
+	self.t[self.i] = t;
+	self.f[self.i] = f;
+	self.i += 1;
+	if self.i == 3 {
+	    self.i = 0;
+	}
+	if self.n < 3 {
+	    self.n += 1;
+	}
+    }
+    pub fn solve_for_t(&self,f:f64)->Option<f64> {
+	if self.n < 3 {
+	    return None;
+	}
+	let i1 = self.i;
+	let i2 = (i1 + 1) % 3;
+	let i3 = (i1 + 2) % 3;
+	let m1 = self.f[i1];
+	let m2 = self.f[i2];
+	let m3 = self.f[i3];
+	let t1 = self.t[i1];
+	let t2 = self.t[i2];
+	let t3 = self.t[i3];
+	println!("m1={} m2={} m3={} t1={} t2={} t3={}",m1,m2,m3,t1,t2,t3);
+	let d = ((t2-t1)*t3*t3+(t1*t1-t2*t2)*t3+t1*t2*t2-t1*t1*t2);
+	let a = ((m1*t2-m2*t1)*t3*t3+(m2*t1*t1-m1*t2*t2)*t3+m3*t1*t2*t2-m3*t1*t1*t2) / d;
+	let b = ((m2-m1)*t3*t3+(m1-m3)*t2*t2+(m3-m2)*t1*t1) / d;
+	let c = -((m2-m1)*t3+(m1-m3)*t2+(m3-m2)*t1) / d;
+	println!("a={} b={} c={}",a,b,c);
+	let dt = 4.0*c*f-4.0*a*c+b*b;
+	if dt < 0.0 {
+	    None
+	} else {
+	    Some((dt.sqrt()-b)/(2.0*c))
+	}
+    }
+}
+ 
+
+
 fn main() {
     let mut mac = Machine::new();
     // let mut mac = Bracket::new();
@@ -406,8 +463,10 @@ fn main() {
 
     let maj = |a,b,c| mac.or(mac.or(mac.and(a,b),mac.and(a,c)),
 			     mac.and(b,c));
+
+    let t_start = now();
     
-    for t in 0..81 {
+    for t in 0..2*81 {
 	let f = mac.xor(r4.bit(16),r4.bit(11));
 	r4 = r4.rotate_left(1);
 	r4.set_bit(0,f);
@@ -552,14 +611,19 @@ fn main() {
     let mut found = 0;
     let mut cnt = 0;
     let mut seen = BTreeSet::new();
+    let mut total = 0;
     
+    let mut max_time = 0.2;
+    let p = 18;
+
+    let mut qe = QuadraticEstimator::new();
+
     let t_start = now();
     loop {
 	if found >= p {
 	    break;
 	}
 	
-	let p = 18;
 
 	loop {
 	    // Make some random assumptions
@@ -592,17 +656,18 @@ fn main() {
 	// let u = key.bit(i);
 	// let u = i as u32;
 	
-	let max_time = 0.2;
 	solver.set_max_time(max_time);
-	let t0 = now();
+	let t0 = now() - t_start;
 	let ret = solver.solve_with_assumptions(&ass);
-	let t1 = now();
+	let t1 = now() - t_start;
+	total += 1;
 	let dt = t1 - t0;
 	// println!("{} {:?}",p,ret);
 	// print!("{:.3} ",dt);
 	match ret {
 	    Lbool::False => {
-		println!("F{} in {:.3}",p,dt);
+		println!("F{} in {:.3}/{:.3}",p,dt,max_time);
+		max_time = 0.9 * max_time + 0.1 * 1.5 * dt;
 		if p == 1 {
 		    i = selected[0];
 		    let v = !ass[0].isneg();
@@ -627,9 +692,18 @@ fn main() {
 		let a : Vec<Lit> = ass.iter().map(|&l| !l).collect();
 		solver.add_clause(&a);
 		cnt += 1;
-		println!("CNT {}, APPROX EVERY {} s",cnt,(now() - t_start)/cnt as f64);
+		qe.push(t1,cnt as f64);
+		let rate = (now() - t_start)/cnt as f64;
+		println!("CNT {}, APPROX EVERY {} s OR EVERY {} SOLVE, ETA {} h",cnt,rate,
+			 total as f64/cnt as f64,
+			 rate * (1 << p) as f64 / 3600.0);
+		match qe.solve_for_t((1 << p) as f64) {
+		    None => (),
+		    Some(t) => println!("ETA {} h",t/3600.0)
+		}
 	    },
 	    Lbool::Undef => {
+		max_time *= 1.01
 		// println!("U{}",p);
 	    }
 	    Lbool::True => {
