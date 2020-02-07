@@ -28,6 +28,9 @@ pub fn flip32(x:u32)->u32 {
 }
 
 impl Bits {
+    pub fn weight(&self)->usize {
+	self.b.iter().fold(0,|q,x| q + x.count_ones() as usize)
+    }
     pub fn new()->Self {
 	Bits{ n:0,b:Vec::new() }
     }
@@ -88,6 +91,13 @@ impl Bits {
 	    m -= s;
 	    self.n += s;
 	}
+    }
+    pub fn slice(&self,i:usize,n:usize)->Self {
+	let mut b = Bits::new();
+	for j in 0..n {
+	    b.append_bit(self.get(i+j));
+	}
+	b
     }
     pub fn get(&self,i:usize)->bool {
 	if i >= self.n {
