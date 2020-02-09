@@ -234,6 +234,11 @@ module type ROUNDS = sig
   val inner_rounds : int
 end
 
+module Very_short_rounds = struct
+  let outer_rounds = 1
+  let inner_rounds = 1
+end
+
 module Short_rounds = struct
   let outer_rounds = 2
   let inner_rounds = 48
@@ -525,14 +530,18 @@ module Solver = struct
     q.constraint_indicators.(i).(q.values.(i))
 
   let is_gate_satisfied q i =
-    is_gate_constraint_satisfied q i &&
-    match q.circuit.(i) with
-    | XOR(j, k) -> q.values.(i) = q.values.(j) lxor q.values.(k)
-    | ADD(j, k) ->
-        q.values.(i) = 255 land (q.values.(j) + q.values.(k))
-    | CONST k -> q.values.(i) = k
-    | PI j -> q.values.(i) = pi_subst_table.(q.values.(j))
-    | INPUT i -> true
+    let s1 = is_gate_constraint_satisfied q i in
+    let s2 =
+      match q.circuit.(i) with
+      | XOR(j, k) -> q.values.(i) = q.values.(j) lxor q.values.(k)
+      | ADD(j, k) ->
+         q.values.(i) = 255 land (q.values.(j) + q.values.(k))
+      | CONST k -> q.values.(i) = k
+      | PI j -> q.values.(i) = pi_subst_table.(q.values.(j))
+      | INPUT i -> true
+    in
+    pf "Gate %d: constraint %b, direct %b\n%!" i s1 s2;
+    s1 && s2
 
   let check q i =
     if is_gate_satisfied q i then
@@ -632,7 +641,7 @@ module Solver = struct
     fp oc " }"
 
   let iteration q =
-    (*pf "iter %a\n%!" dump q;*)
+    pf "iter %a, num_unsatisfied = %d\n%!" dump q q.num_unsatisfied;
     (* Pick a random unsatisfied node *)
     if q.num_unsatisfied = 0 then
       false
@@ -645,18 +654,22 @@ module Solver = struct
           begin
             let i = Random.int (Array.length q.circuit) in
             randomize q i;
-            (*pf "randomize %d <- %d\n" i q.values.(i)*)
+            pf "randomize %d <- %d\n" i q.values.(i)
           end;
 
         let j = Random.int q.num_unsatisfied in
         let i = q.unsatisfied.(j) in
+        pf "Picked %d-th unsatisfied gate %i out of %d\n%!" j i q.num_unsatisfied;
         propagate q i;
         (*input_line stdin;*)
         if is_gate_satisfied q i then
-          () (*pf "ok %d (%d)\n%!" i q.values.(i)*)
+          (
+            pf "ok %d (%d)\n%!" i q.values.(i);
+            ()
+          )
         else
           begin
-            (*pf "sat back %d\n%!" i;*)
+            pf "sat back %d\n%!" i;
             satisfy_backward q i
           end;
         (*else if p < p_forward then
@@ -701,7 +714,7 @@ module Solver = struct
   let run q =
     let m = Array.length q.circuit in
     let rec loop i =
-      if i land 4095 = 0 then
+      if i land 16777215 = 0 then
         pf "Iteration: %d (%d/%d unsatisfied)\n%!"
           i q.num_unsatisfied m;
       if iteration q then
@@ -741,7 +754,7 @@ module Solver = struct
     loop 0
 end
 
-module R = Short_rounds
+module R = Very_short_rounds
 module MD2_T = MD2(R)(Terms)
 module MD2_C = MD2(R)(Concrete)
 
@@ -881,7 +894,7 @@ let _ =
   end
 
 let _ =
-  Solver.set_constraint q h.(0) [| 33; 34; 35; 36 |];
+  (* Solver.set_constraint q h.(0) [| 33; 34; 35; 36 |]; *)
   Solver.run q
 
 (* vim:set tw=80 ts=2 sw=2 expandtab: *)
