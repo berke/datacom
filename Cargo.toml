@@ -21,3 +21,7 @@ path = "src/test_machine.rs"
 [[bin]]
 name = "show_regs"
 path = "src/show_regs.rs"
+
+[[bin]]
+name = "test_revealer"
+path = "src/test_revealer.rs"
