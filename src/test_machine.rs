@@ -319,7 +319,8 @@ struct ExperimentalParameters {
     first:bool,
     nmatch:usize,
     t_max:f64,
-    nround:usize
+    nround:usize,
+    max_new_assumptions:usize
 }
 
 impl ExperimentalParameters {
@@ -342,7 +343,8 @@ impl ExperimentalParameters {
 	    first:true,
 	    nmatch:16,
 	    t_max:300.0,
-	    nround:6
+	    nround:6,
+	    max_new_assumptions:32
 	}
     }
 }
@@ -371,6 +373,9 @@ fn test_random_subset() {
 }
 
 // 40 bits unknown, nblock=2 : 7' on single traffic
+// Tea, 3 rounds, 40 bits unknown, 256 traffic, 16 bits match : 193.8 seconds
+// Tea, 3 rounds, 32 bits unknown, 256 traffic, 16 bits match, 4 blocks : 27.5 seconds
+// Tea, 3 rounds, 32 bits unknown, 4 traffic, 16 bits match, 4 blocks : 81.5 seconds
 fn run(params:&ExperimentalParameters,key:&Bits,tf:&Vec<Traffic>,xw:&mut Xorwow)->Result<bool,std::io::Error> {
     let &ExperimentalParameters { 
 	nblock,
@@ -390,7 +395,8 @@ fn run(params:&ExperimentalParameters,key:&Bits,tf:&Vec<Traffic>,xw:&mut Xorwow)
 	mut first,
 	nmatch,
 	t_max,
-	nround
+	nround,
+	max_new_assumptions
     } = params;
 
     let n_make_it_easier = key_size - n_unknown;
@@ -510,6 +516,7 @@ fn run(params:&ExperimentalParameters,key:&Bits,tf:&Vec<Traffic>,xw:&mut Xorwow)
     let mut iassume = assume_every - 1;
     let mut ntrassume = 0;
     let nass_max = nass_max.min(n_unknown);
+    let mut new_assumptions = 0;
 
     'main: loop {
 	if now() - t_start > t_max {
@@ -605,7 +612,9 @@ fn run(params:&ExperimentalParameters,key:&Bits,tf:&Vec<Traffic>,xw:&mut Xorwow)
 	    tf_ass.push(Lit::new(bcm.y.bit(j),!y.get(j)).unwrap());
 	}
 
-	if first || (t_last_full + full_every <= now() - t_start && num_added_clauses > num_added_clauses_full) {
+	if first || (t_last_full + full_every <= now() - t_start && num_added_clauses > num_added_clauses_full)
+	    || new_assumptions > max_new_assumptions {
+		new_assumptions = 0;
 	    first = false;
 	    println!("SOLVING full on traffic {}/{}",itraf,ntraffic);
 	    solver.set_max_time(max_time_full);
@@ -635,7 +644,7 @@ fn run(params:&ExperimentalParameters,key:&Bits,tf:&Vec<Traffic>,xw:&mut Xorwow)
 
 	solver.set_max_time(max_time);
 	ntrassume += 1;
-	println!("SOLVING traffic {}/{} max_time={}...",itraf,ntraffic,max_time);
+	println!("SOLVING traffic {}/{} max_time={}, new_assumptions={}...",itraf,ntraffic,max_time,new_assumptions);
 	let t0 = now() - t_start;
 	let ret = solver.solve_with_assumptions(&tf_ass);
 	let t1 = now() - t_start;
@@ -651,28 +660,33 @@ fn run(params:&ExperimentalParameters,key:&Bits,tf:&Vec<Traffic>,xw:&mut Xorwow)
 	    Lbool::False => {
 		// Nice, found a false assumption
 		let nass = ass.len();
-		iassume = assume_every - 1;
 		println!("F{} in {:.3}/{:.3} after {} traffic",nass,dt,max_time,ntrassume);
-		max_time = (0.9 * max_time + 0.1 * 1.5 * dt).max(min_time);
-		let a : Vec<Lit> =
-		    if true {
-			print!("NOT(");
-			for k in 0..nass {
-			    print!(" k{:03}={}",selected[k],if ass[k].isneg() { 1 } else { 0 });
-			}
-			println!(" )");
-			ass.iter().map(|&l| !l).collect()
-		    } else {
-			solver.get_conflict().iter().map(|&l| l).collect()
-		    };
-		println!("UNSAT {} vs {}",nass,a.len());
-		solver.add_clause(&a);
-		num_added_clauses += 1;
-		cnt += 1;
-		let rate = (now() - t_start)/cnt as f64;
-		println!("CNT {}, APPROX EVERY {} s OR EVERY {} SOLVE, ETA {} h",cnt,rate,
-			 total as f64/cnt as f64,
-			 rate * (1 << nass) as f64 / 3600.0); // XXX
+		if nass < n_unknown / 2 { // XXX
+		    iassume = assume_every - 1;
+		    new_assumptions += nass;
+		    max_time = (0.9 * max_time + 0.1 * 1.5 * dt).max(min_time);
+		    let a : Vec<Lit> =
+			if true {
+			    print!("NOT(");
+			    for k in 0..nass {
+				print!(" k{:03}={}",selected[k],if ass[k].isneg() { 1 } else { 0 });
+			    }
+			    println!(" )");
+			    ass.iter().map(|&l| !l).collect()
+			} else {
+			    solver.get_conflict().iter().map(|&l| l).collect()
+			};
+		    println!("UNSAT {} vs {}",nass,a.len());
+		    solver.add_clause(&a);
+		    num_added_clauses += 1;
+		    cnt += 1;
+		    let rate = (now() - t_start)/cnt as f64;
+		    println!("CNT {}, APPROX EVERY {} s OR EVERY {} SOLVE, ETA {} h",cnt,rate,
+			     total as f64/cnt as f64,
+			     rate * (1 << nass) as f64 / 3600.0); // XXX
+		} else {
+		    println!("Rej");
+		}
 	    },
 	    Lbool::Undef => {
 		max_time *= lengthen_factor;
@@ -685,24 +699,25 @@ fn run(params:&ExperimentalParameters,key:&Bits,tf:&Vec<Traffic>,xw:&mut Xorwow)
 fn main()->Result<(),std::io::Error> {
     let mut params = ExperimentalParameters::new();
     let ninstance = 1;
-    params.ntraffic = 256;
+    params.ntraffic = 1024;
     params.first = false;
-    params.max_time_full = 10.0;
+    params.max_time_full = 200.0;
     params.t_max = 600.0;
-    params.max_time_start = 200.0;
+    params.max_time_start = 2.0;
+    params.full_every = 200.0;
     params.assume_every = 1;
-    params.lengthen_factor = 1.001;
+    params.lengthen_factor = 1.1;
 
-    for &nmatch in [0].iter() {
+    for &nmatch in [8].iter() {
 	params.nmatch = nmatch;
-	for &nblock in [64].iter() {
+	for &nblock in [4].iter() {
 	    params.nblock = nblock;
 	    for &nround in [3].iter() {
 		params.nround = nround;
 		for instance in 0..ninstance {
 		    let mut xw = Xorwow::new(12345678 + instance);
 		    //let n_unknowns = [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16];
-		    let n_unknowns = [128];
+		    let n_unknowns = [40];
 		    let key_words = [xw.next(),xw.next(),xw.next(),xw.next()];
 		    let key = Bits::concat(&vec![Bits::new32(key_words[3]),
 						 Bits::new32(key_words[2]),
@@ -712,7 +727,7 @@ fn main()->Result<(),std::io::Error> {
 		    let tf = tea_generate_traffic(&mut xw,key_words,params.nblock,params.ntraffic,nmatch,params.nround);
 		    for &i in n_unknowns.iter() {
 			params.n_unknown = i;
-			params.nass_max = 64; //  / 2;
+			params.nass_max = i; //  / 2;
 			println!("Running experiment n_unknown={} nblock={} nround={} nmatch={} instance={}",i,nblock,nround,nmatch,instance);
 			let t0 = now();
 			let res = run(&params,&key,&tf,&mut xw)?;
