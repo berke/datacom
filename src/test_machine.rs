@@ -320,7 +320,8 @@ struct ExperimentalParameters {
     nmatch:usize,
     t_max:f64,
     nround:usize,
-    max_new_assumptions:usize
+    max_new_assumptions:usize,
+    max_assumptions:usize
 }
 
 impl ExperimentalParameters {
@@ -344,7 +345,8 @@ impl ExperimentalParameters {
 	    nmatch:16,
 	    t_max:300.0,
 	    nround:6,
-	    max_new_assumptions:32
+	    max_new_assumptions:32,
+	    max_assumptions:16
 	}
     }
 }
@@ -396,7 +398,8 @@ fn run(params:&ExperimentalParameters,key:&Bits,tf:&Vec<Traffic>,xw:&mut Xorwow)
 	nmatch,
 	t_max,
 	nround,
-	max_new_assumptions
+	max_new_assumptions,
+	max_assumptions
     } = params;
 
     let n_make_it_easier = key_size - n_unknown;
@@ -661,7 +664,7 @@ fn run(params:&ExperimentalParameters,key:&Bits,tf:&Vec<Traffic>,xw:&mut Xorwow)
 		// Nice, found a false assumption
 		let nass = ass.len();
 		println!("F{} in {:.3}/{:.3} after {} traffic",nass,dt,max_time,ntrassume);
-		if nass < n_unknown / 2 { // XXX
+		if nass < max_assumptions { // XXX
 		    iassume = assume_every - 1;
 		    new_assumptions += nass;
 		    max_time = (0.9 * max_time + 0.1 * 1.5 * dt).max(min_time);
@@ -712,7 +715,7 @@ fn main()->Result<(),std::io::Error> {
 	params.nmatch = nmatch;
 	for &nblock in [4].iter() {
 	    params.nblock = nblock;
-	    for &nround in [3].iter() {
+	    for &nround in [4].iter() {
 		params.nround = nround;
 		for instance in 0..ninstance {
 		    let mut xw = Xorwow::new(12345678 + instance);
@@ -726,6 +729,7 @@ fn main()->Result<(),std::io::Error> {
 		    //let tf = xtea_generate_traffic(&mut xw,key_words,params.nblock,params.ntraffic,nmatch,params.nround);
 		    let tf = tea_generate_traffic(&mut xw,key_words,params.nblock,params.ntraffic,nmatch,params.nround);
 		    for &i in n_unknowns.iter() {
+			params.max_assumptions = i.max(4) - 4; // XXX
 			params.n_unknown = i;
 			params.nass_max = i; //  / 2;
 			println!("Running experiment n_unknown={} nblock={} nround={} nmatch={} instance={}",i,nblock,nround,nmatch,instance);
