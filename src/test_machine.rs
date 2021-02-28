@@ -234,14 +234,18 @@ fn tea_model<M:GateSoup>(mac:&mut M,q:usize,nmatch:usize,nround:usize)->BlockCip
 	let x1_r = Register::input(mac,32);
 
 	let delta = 0x9e3779b9_u32;
+	let delta_r = Register::constant(mac,32,delta as u64);
 
 	let mut v0_r = x0_r.clone();
 	let mut v1_r = x1_r.clone();
-	let mut sum : u32 = 0;
+	// let mut sum : u32 = 0;
+	let mut sum_r = Register::constant(mac,32,0);
 
 	for r in 0..nround {
-	    sum = sum.wrapping_add(delta);
-	    let sum_r = Register::constant(mac,32,sum as u64);
+	    let (sum_next_r,_) = sum_r.add(mac,&delta_r,zero);
+	    sum_r = sum_next_r;
+	    // sum = sum.wrapping_add(delta);
+	    // let sum_r = Register::constant(mac,32,sum as u64);
 
 	    let v1s4 = v1_r.shift_left(4,zero);
 	    let (v1s4k0,_) = v1s4.add(mac,&k0_r,zero);
@@ -468,7 +472,7 @@ fn run(params:&ExperimentalParameters,key:&Bits,tf:&Vec<Traffic>,xw:&mut Xorwow)
 	}
     }
 
-    let q = 8;
+    let q = 0;
     if q > 0 {
 	for i in 0..n_unknown-q {
 	    let mut ass = Vec::new();
@@ -542,13 +546,13 @@ fn run(params:&ExperimentalParameters,key:&Bits,tf:&Vec<Traffic>,xw:&mut Xorwow)
 		    let mut ass2 = ass.clone();
 		    ass2.sort();
 		    if true || !seen.contains(&ass2) {
-			println!("NCLADD: {}, NASS:{}. ASS:{:?}",num_added_clauses,nass,ass2);
+			//println!("NCLADD: {}, NASS:{}. ASS:{:?}",num_added_clauses,nass,ass2);
 			seen.insert(ass2);
 			break;
 		    }
 		}
 	    } else {
-		println!("ASS: {:08b}, NCLADD: {}",kass,num_added_clauses);
+		//println!("ASS: {:08b}, NCLADD: {}",kass,num_added_clauses);
 		let mut kk = kass;
 		ass.clear();
 		for i in 0..nass_min {
@@ -685,20 +689,20 @@ fn main()->Result<(),std::io::Error> {
     params.first = false;
     params.max_time_full = 10.0;
     params.t_max = 600.0;
-    params.max_time_start = 0.1;
+    params.max_time_start = 200.0;
     params.assume_every = 1;
     params.lengthen_factor = 1.001;
 
     for &nmatch in [0].iter() {
 	params.nmatch = nmatch;
-	for &nblock in [4].iter() {
+	for &nblock in [64].iter() {
 	    params.nblock = nblock;
-	    for &nround in [32].iter() {
+	    for &nround in [3].iter() {
 		params.nround = nround;
 		for instance in 0..ninstance {
 		    let mut xw = Xorwow::new(12345678 + instance);
 		    //let n_unknowns = [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16];
-		    let n_unknowns = [40];
+		    let n_unknowns = [128];
 		    let key_words = [xw.next(),xw.next(),xw.next(),xw.next()];
 		    let key = Bits::concat(&vec![Bits::new32(key_words[3]),
 						 Bits::new32(key_words[2]),
@@ -708,7 +712,7 @@ fn main()->Result<(),std::io::Error> {
 		    let tf = tea_generate_traffic(&mut xw,key_words,params.nblock,params.ntraffic,nmatch,params.nround);
 		    for &i in n_unknowns.iter() {
 			params.n_unknown = i;
-			params.nass_max = i / 2;
+			params.nass_max = 64; //  / 2;
 			println!("Running experiment n_unknown={} nblock={} nround={} nmatch={} instance={}",i,nblock,nround,nmatch,instance);
 			let t0 = now();
 			let res = run(&params,&key,&tf,&mut xw)?;
