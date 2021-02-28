@@ -310,7 +310,7 @@ struct ExperimentalParameters {
     nass_max:usize,
     exponent:f64,
     full_every:f64,
-    max_time_full:f64,
+    max_time_full_ratio:f64,
     random_assumptions:bool,
     min_time:f64,
     max_time_start:f64,
@@ -320,7 +320,7 @@ struct ExperimentalParameters {
     nmatch:usize,
     t_max:f64,
     nround:usize,
-    max_new_assumptions:usize,
+    sufficient_new_assumptions:usize,
     max_assumptions:usize
 }
 
@@ -335,7 +335,7 @@ impl ExperimentalParameters {
 	    nass_max:24,
 	    exponent:1.5,
 	    full_every:200.0,
-	    max_time_full:120.0,
+	    max_time_full_ratio:20.0,
 	    random_assumptions:true,
 	    min_time:0.025,
 	    max_time_start:10.0,
@@ -345,7 +345,7 @@ impl ExperimentalParameters {
 	    nmatch:16,
 	    t_max:300.0,
 	    nround:6,
-	    max_new_assumptions:32,
+	    sufficient_new_assumptions:32,
 	    max_assumptions:16
 	}
     }
@@ -388,7 +388,7 @@ fn run(params:&ExperimentalParameters,key:&Bits,tf:&Vec<Traffic>,xw:&mut Xorwow)
 	nass_max,
 	exponent,
 	full_every,
-	max_time_full,
+	max_time_full_ratio,
 	random_assumptions,
 	min_time,
 	max_time_start,
@@ -398,7 +398,7 @@ fn run(params:&ExperimentalParameters,key:&Bits,tf:&Vec<Traffic>,xw:&mut Xorwow)
 	nmatch,
 	t_max,
 	nround,
-	max_new_assumptions,
+	sufficient_new_assumptions,
 	max_assumptions
     } = params;
 
@@ -616,11 +616,11 @@ fn run(params:&ExperimentalParameters,key:&Bits,tf:&Vec<Traffic>,xw:&mut Xorwow)
 	}
 
 	if first || (t_last_full + full_every <= now() - t_start && num_added_clauses > num_added_clauses_full)
-	    || new_assumptions > max_new_assumptions {
+	    || new_assumptions >= sufficient_new_assumptions {
 		new_assumptions = 0;
 	    first = false;
 	    println!("SOLVING full on traffic {}/{}",itraf,ntraffic);
-	    solver.set_max_time(max_time_full);
+	    solver.set_max_time(max_time * max_time_full_ratio);
 	    let t0 = now() - t_start;
 	    let ret = solver.solve_with_assumptions(&tf_ass);
 	    let t1 = now() - t_start;
@@ -664,7 +664,7 @@ fn run(params:&ExperimentalParameters,key:&Bits,tf:&Vec<Traffic>,xw:&mut Xorwow)
 		// Nice, found a false assumption
 		let nass = ass.len();
 		println!("F{} in {:.3}/{:.3} after {} traffic",nass,dt,max_time,ntrassume);
-		if nass < max_assumptions { // XXX
+		if nass <= max_assumptions { // XXX
 		    iassume = assume_every - 1;
 		    new_assumptions += nass;
 		    max_time = (0.9 * max_time + 0.1 * 1.5 * dt).max(min_time);
@@ -702,25 +702,26 @@ fn run(params:&ExperimentalParameters,key:&Bits,tf:&Vec<Traffic>,xw:&mut Xorwow)
 fn main()->Result<(),std::io::Error> {
     let mut params = ExperimentalParameters::new();
     let ninstance = 1;
-    params.ntraffic = 1024;
+    params.ntraffic = 128;
     params.first = false;
-    params.max_time_full = 200.0;
+    params.max_time_full_ratio = 100.0;
     params.t_max = 600.0;
-    params.max_time_start = 2.0;
-    params.full_every = 200.0;
+    params.max_time_start = 200.0;
+    params.full_every = 2000.0;
     params.assume_every = 1;
-    params.lengthen_factor = 1.1;
+    params.lengthen_factor = 1.5;
+    params.sufficient_new_assumptions = 256;
 
-    for &nmatch in [8].iter() {
+    for &nmatch in [0].iter() {
 	params.nmatch = nmatch;
-	for &nblock in [4].iter() {
+	for &nblock in [2].iter() {
 	    params.nblock = nblock;
 	    for &nround in [4].iter() {
 		params.nround = nround;
 		for instance in 0..ninstance {
 		    let mut xw = Xorwow::new(12345678 + instance);
 		    //let n_unknowns = [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16];
-		    let n_unknowns = [40];
+		    let n_unknowns = [128];
 		    let key_words = [xw.next(),xw.next(),xw.next(),xw.next()];
 		    let key = Bits::concat(&vec![Bits::new32(key_words[3]),
 						 Bits::new32(key_words[2]),
@@ -729,9 +730,10 @@ fn main()->Result<(),std::io::Error> {
 		    //let tf = xtea_generate_traffic(&mut xw,key_words,params.nblock,params.ntraffic,nmatch,params.nround);
 		    let tf = tea_generate_traffic(&mut xw,key_words,params.nblock,params.ntraffic,nmatch,params.nround);
 		    for &i in n_unknowns.iter() {
-			params.max_assumptions = i.max(4) - 4; // XXX
+			params.max_assumptions = i.max(2) - 8; // XXX
 			params.n_unknown = i;
-			params.nass_max = i; //  / 2;
+			params.nass_max = i.max(2) / 2; //  / 2;
+			params.nass_min = i.max(2) / 2;
 			println!("Running experiment n_unknown={} nblock={} nround={} nmatch={} instance={}",i,nblock,nround,nmatch,instance);
 			let t0 = now();
 			let res = run(&params,&key,&tf,&mut xw)?;
