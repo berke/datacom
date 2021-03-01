@@ -1,3 +1,5 @@
+use crate::utils::*;
+
 pub fn encipher((x0,x1):(u32,u32), k:[u32;4],nround:usize)->(u32,u32)
 {
     let mut sum : u32 = 0;
@@ -18,4 +20,9 @@ pub fn encipher((x0,x1):(u32,u32), k:[u32;4],nround:usize)->(u32,u32)
 		(v0 >> 5).wrapping_add(k[3]));
     }
     (v0,v1)
+}
+
+pub fn encipher1(x:u64,k:u128,nround:usize)->u64 {
+    let (y0,y1) = encipher(sp(x),sp128(k),nround);
+    jn(y0,y1)
 }

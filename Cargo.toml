@@ -25,3 +25,7 @@ path = "src/show_regs.rs"
 [[bin]]
 name = "test_revealer"
 path = "src/test_revealer.rs"
+
+[[bin]]
+name = "test_distinguisher"
+path = "src/test_distinguisher.rs"
