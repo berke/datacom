@@ -1,6 +1,7 @@
 mod xorwow;
 mod utils;
 mod tea;
+mod xtea;
 
 use std::io::Write;
 use xorwow::Xorwow;
@@ -79,9 +80,10 @@ fn main() {
     let mut bt = BinomialTester::new();
     let k = xw.gen_u128();
     let nround = 64;
-    let count = 100000000;
+    let count = 1000;
     let x0 = xw.gen_u64();
-    let f = |x| tea::encipher1(x,k,nround);
+    //let f = |x| tea::encipher1(x,k,nround);
+    let f = |x| xtea::encipher1(x,k,nround);
     bt.test(count,f,x0);
     bt.dump(&mut std::io::stdout());
 }
