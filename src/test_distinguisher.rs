@@ -51,8 +51,8 @@ impl BinomialTester {
 	for _ in 0..count {
 	    let y = f(x);
 	    let d = 1_u64 << self.xw.integer(64);
-	    //let xp = x.wrapping_sub(d);
-	    let xp = x ^ d;
+	    let xp = x.wrapping_sub(d);
+	    //let xp = x ^ d;
 	    let yp = f(xp);
 	    let w = (y ^ yp).weight();
 	    self.stats[w] += 1;
@@ -63,25 +63,27 @@ impl BinomialTester {
 
     pub fn dump<F:Write>(&self,fmt:&mut F) {
 	let c = (self.count as f64).log2();
+	let mut s_z2 = 0.0;
 	for w in 0..65 {
 	    let log2_n_actual = (self.stats[w] as f64).log2();
 	    let log2_n_expected = log2_binomial(64,w) - 64.0 + c;
-	    if log2_n_expected >= 0.0 {
-		let log2_sd_n_expected = log2_n_expected / 2.0; // xxx
-		let e = (log2_n_actual.exp2() - log2_n_expected.exp2()).abs();
-		let z = (log2_n_actual.exp2() - log2_n_expected.exp2()).abs().log2() - log2_sd_n_expected;
-		
-		if z > 0.0 {
-		    writeln!(fmt,"{:2} {:10.6} {:10.6} {:10.6} {:+10.1}/2^{:10.6}",
-			     w,
-			     log2_n_actual,
-			     log2_n_expected,
-			     z,
-			     e,
-			     log2_sd_n_expected).unwrap();
-		}
-	    }
+	    let log2_sd_n_expected = log2_n_expected / 2.0; // xxx
+	    let e = (log2_n_actual.exp2() - log2_n_expected.exp2()).abs();
+	    let log2_z = (log2_n_actual.exp2() - log2_n_expected.exp2()).abs().log2() - log2_sd_n_expected;
+	    s_z2 += (2.0 * log2_z).exp2();
 	}
+	let chi2 = (s_z2 - 32.0) / 64.0;
+	println!("{}",chi2);
+	// if z > 0.0 {
+	//     writeln!(fmt,"{:2} {:10.6} {:10.6} {:10.6} {:+10.1}/2^{:10.6}",
+	// 	     w,
+	// 	     log2_n_actual,
+	// 	     log2_n_expected,
+	// 	     z,
+	// 	     e,
+	// 	     log2_sd_n_expected).unwrap();
+	// }
+	//     }
     }
 }
 
@@ -91,7 +93,7 @@ fn main() {
     let k = xw.gen_u128();
     let nround = 4;
     let passes = 1000;
-    let count = 10000;
+    let count = 100000;
     let x0 = xw.gen_u64();
     let f1 = |x| tea::encipher1(x,k,nround);
     let f2 = |x| xtea::encipher1(x,k,nround);
@@ -106,7 +108,7 @@ fn main() {
     };
     for _ in 0..passes {
 	let x = xw.gen_u64();
-	bt.test(count,f2,x);
+	bt.test(count,f1,x);
     }
     bt.dump(&mut std::io::stdout());
 }
