@@ -8,6 +8,7 @@ use xorwow::Xorwow;
 use utils::*;
 
 struct BinomialTester {
+    xw:Xorwow,
     stats:[usize;65],
     count:usize
 }
@@ -39,6 +40,7 @@ fn log2_binomial(out_of:usize,select:usize)->f64 {
 impl BinomialTester {
     pub fn new()->Self {
 	Self{
+	    xw:Xorwow::new(1234),
 	    stats:[0;65],
 	    count:0
 	}
@@ -47,9 +49,14 @@ impl BinomialTester {
     pub fn test<F:Fn(u64)->u64>(&mut self,count:usize,f:F,x0:u64) {
 	let mut x = x0;
 	for _ in 0..count {
-	    let w = x.weight();
+	    let y = f(x);
+	    let d = 1_u64 << self.xw.integer(64);
+	    //let xp = x.wrapping_sub(d);
+	    let xp = x ^ d;
+	    let yp = f(xp);
+	    let w = (y ^ yp).weight();
 	    self.stats[w] += 1;
-	    x = f(x);
+	    x = y;
 	}
 	self.count += count;
     }
@@ -64,7 +71,7 @@ impl BinomialTester {
 		let e = (log2_n_actual.exp2() - log2_n_expected.exp2()).abs();
 		let z = (log2_n_actual.exp2() - log2_n_expected.exp2()).abs().log2() - log2_sd_n_expected;
 		
-		if z < -3.0 {
+		if z > 0.0 {
 		    writeln!(fmt,"{:2} {:10.6} {:10.6} {:10.6} {:+10.1}/2^{:10.6}",
 			     w,
 			     log2_n_actual,
@@ -82,9 +89,9 @@ fn main() {
     let mut xw = Xorwow::new(1234568);
     let mut bt = BinomialTester::new();
     let k = xw.gen_u128();
-    let nround = 3;
+    let nround = 4;
     let passes = 1000;
-    let count = 1000000;
+    let count = 10000;
     let x0 = xw.gen_u64();
     let f1 = |x| tea::encipher1(x,k,nround);
     let f2 = |x| xtea::encipher1(x,k,nround);
@@ -99,7 +106,7 @@ fn main() {
     };
     for _ in 0..passes {
 	let x = xw.gen_u64();
-	bt.test(count,f1,x);
+	bt.test(count,f2,x);
     }
     bt.dump(&mut std::io::stdout());
 }
