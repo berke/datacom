@@ -3,6 +3,7 @@ use std::cmp::Ordering;
 
 mod xtea;
 mod xorwow;
+mod utils;
 
 use xorwow::Xorwow;
 
