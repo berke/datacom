@@ -61,14 +61,17 @@ impl BinomialTester {
 	    let log2_n_expected = log2_binomial(64,w) - 64.0 + c;
 	    if log2_n_expected >= 0.0 {
 		let log2_sd_n_expected = log2_n_expected / 2.0; // xxx
+		let e = (log2_n_actual.exp2() - log2_n_expected.exp2()).abs();
 		let z = (log2_n_actual.exp2() - log2_n_expected.exp2()).abs().log2() - log2_sd_n_expected;
 		
 		if z < -3.0 {
-		    writeln!(fmt,"{:2} {:10.6} {:10.6} {:10.6}",
+		    writeln!(fmt,"{:2} {:10.6} {:10.6} {:10.6} {:+10.1}/2^{:10.6}",
 			     w,
 			     log2_n_actual,
 			     log2_n_expected,
-			     z);
+			     z,
+			     e,
+			     log2_sd_n_expected).unwrap();
 		}
 	    }
 	}
@@ -76,14 +79,27 @@ impl BinomialTester {
 }
 
 fn main() {
-    let mut xw = Xorwow::new(1234567);
+    let mut xw = Xorwow::new(1234568);
     let mut bt = BinomialTester::new();
     let k = xw.gen_u128();
-    let nround = 64;
-    let count = 1000;
+    let nround = 3;
+    let passes = 1000;
+    let count = 1000000;
     let x0 = xw.gen_u64();
-    //let f = |x| tea::encipher1(x,k,nround);
-    let f = |x| xtea::encipher1(x,k,nround);
-    bt.test(count,f,x0);
+    let f1 = |x| tea::encipher1(x,k,nround);
+    let f2 = |x| xtea::encipher1(x,k,nround);
+    let f3 = |x:u64| {
+	use blake2::{Blake2b,Digest};
+	let mut h = Blake2b::new();
+	let mut xb = [0;8];
+	xb.copy_from_slice(&x.to_le_bytes());
+	h.update(&xb);
+	xb.copy_from_slice(&h.finalize()[0..8]);
+	u64::from_le_bytes(xb)
+    };
+    for _ in 0..passes {
+	let x = xw.gen_u64();
+	bt.test(count,f1,x);
+    }
     bt.dump(&mut std::io::stdout());
 }

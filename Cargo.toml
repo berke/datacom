@@ -8,6 +8,7 @@ edition = "2018"
 
 [dependencies]
 cryptominisat = { path = "/home/berke/src/cryptominisat-rs/" }
+blake2 = { version = "0.9.1" }
 #cryptominisat = { git = "https://github.com/msoos/cryptominisat-rs", branch= "master" }
 
 # [[bin]]
