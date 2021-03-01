@@ -50,15 +50,24 @@ impl BinomialTester {
 	let mut x = x0;
 	for _ in 0..count {
 	    let y = f(x);
-	    let d = 1_u64 << self.xw.integer(64);
-	    let xp = x.wrapping_sub(d);
-	    //let xp = x ^ d;
-	    let yp = f(xp);
-	    let w = (y ^ yp).weight();
-	    self.stats[w] += 1;
-	    x = y;
+
+	    let mut w_best = 0;
+	    let mut y_best = 0;
+	    for i in 0..64 {
+		let d = 1_u64 << i; // self.xw.integer(64);
+		let xp = x ^ d;
+		let yp = f(xp);
+		let w = (y ^ yp).weight();
+		self.stats[w] += 1;
+		self.count += 1;
+		if i == 0 || w < w_best {
+		    y_best = yp;
+		    w_best = w;
+		}
+	    }
+	    x = y_best;
 	}
-	self.count += count;
+	//self.count += count;
     }
 
     pub fn dump<F:Write>(&self,fmt:&mut F) {
@@ -91,8 +100,8 @@ fn main() {
     let mut xw = Xorwow::new(1234568);
     let mut bt = BinomialTester::new();
     let k = xw.gen_u128();
-    let nround = 4;
-    let passes = 1000;
+    let nround = 5;
+    let passes = 100;
     let count = 100000;
     let x0 = xw.gen_u64();
     let f1 = |x| tea::encipher1(x,k,nround);
@@ -108,7 +117,7 @@ fn main() {
     };
     for _ in 0..passes {
 	let x = xw.gen_u64();
-	bt.test(count,f1,x);
+	bt.test(count,f3,x);
     }
     bt.dump(&mut std::io::stdout());
 }
