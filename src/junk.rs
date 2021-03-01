@@ -726,3 +726,122 @@
 
 //     let ret = solver.solve();
 // }
+
+    'search: for niter in 0.. {
+	if niter & 16777215 == 0 {
+	    println!("n = {}...",niter);
+	}
+	let w_y = rnd64() & rnd64() & rnd64() & rnd64();
+	let w_key = rnd128() & rnd128() & rnd128() & rnd128();
+	if w_y == 0 || w_key == 0 {
+	    continue;
+	}
+
+	let mut x = rnd64();
+	'next1: for _ in 0..64 {
+	    x = x.rotate_left(1);
+	    for _ in 0..256 {
+		let key = rnd128();
+		let (y0,y1) = tea::encipher(sp(x),sp128(key),nround);
+		let y = jn(y0,y1);
+		if ((y & w_y).count_ones() & 1) != ((key & w_key).count_ones() & 1) {
+		    continue 'next1;
+		}
+	    }
+	    println!("Passed once w_y={:016X} w_key={:032X} x={:016X}",
+		     w_y,w_key,x);
+	}
+	
+	// let mut cst = Vec::new();
+	// // let mut ass = Vec::new();
+
+	// cst.append(&mut bcm.x.constraints_from_bits(&Bits::new64(x)));
+	// // cst.append(&mut bcm.key.constraints_from_bits(&Bits::zero(128)));
+	// // let out_constraints : Vec<(Index,bool)> = Vec::new();
+	// let mut solver = mac.solver(&cst);
+
+	// solver.add_clause(&[
+	//     Lit::new(bcm.y.bit(j),false).unwrap(),
+	//     Lit::new(bcm.key.bit(kb),false).unwrap()
+	// ]);
+	// solver.add_clause(&[
+	//     Lit::new(bcm.y.bit(j),true).unwrap(),
+	//     Lit::new(bcm.key.bit(kb),true).unwrap()
+	// ]);
+	
+	// // for k in 0..64 {
+	// // 	ass.push(Lit::new(bcm.x.bit(j),(x >> k) & 1 == 0).unwrap());
+	// // }
+
+	// let ret = solver.solve(); // _with_assumptions(&ass);
+
+	// match ret {
+	//     Lbool::True => {
+	// 	// let md = Vec::from(solver.get_model());
+	// 	// let values = md.iter().map(|x| *x == Lbool::True).collect();
+	// 	// let undef : Vec<bool> = md.iter().map(|x| *x == Lbool::Undef).collect();
+
+	// 	// let x = bcm.x.value_as_bits(&values);
+	// 	// let y = bcm.y.value_as_bits(&values);
+	// 	// let key = bcm.key.value_as_bits(&values);
+	// 	// println!("K:{:?}",key);
+	// 	// println!("X:{:?}",x);
+	// 	// println!("Y:{:?}",y);
+	// 	// println!("Y[{}]:{} vs K[0]:{}",
+	// 	// 	     j,y.get(j),
+	// 	// 	     key.get(0));
+	//     },
+	//     Lbool::False => {
+	// 	println!("Contradiction: x={:016X} j={}",x,j);
+	// 	x_found = x;
+	// 	j_found = j;
+	// 	kb_found = kb;
+
+	// 	break;
+	//     },
+	//     _ => {
+	// 	panic!("Not supposed to happen");
+	//     }
+	// }
+    }
+
+    // // Test
+    // for _ in 0..100 {
+    // 	let k3 = xw.borrow_mut().next();
+    // 	let k2 = xw.borrow_mut().next();
+    // 	let k1 = xw.borrow_mut().next();
+    // 	let k0 = xw.borrow_mut().next();
+    // 	let key_words = [k3,k2,k1,k0];
+    // 	let key = Bits::concat(&vec![Bits::new32(key_words[3]),
+    // 				     Bits::new32(key_words[2]),
+    // 				     Bits::new32(key_words[1]),
+    // 				     Bits::new32(key_words[0])]);
+
+    // 	let mut cst = Vec::new();
+    // 	cst.append(&mut bcm.x.constraints_from_bits(&Bits::new64(x_found)));
+    // 	cst.append(&mut bcm.key.constraints_from_bits(&key));
+
+    // 	let mut solver = mac.solver(&cst);
+    // 	let ret = solver.solve();
+
+    // 	match ret {
+    // 	    Lbool::True => {
+    // 		let md = Vec::from(solver.get_model());
+    // 		let values = md.iter().map(|x| *x == Lbool::True).collect();
+    // 		let undef : Vec<bool> = md.iter().map(|x| *x == Lbool::Undef).collect();
+
+    // 		let x = bcm.x.value_as_bits(&values);
+    // 		let y = bcm.y.value_as_bits(&values);
+    // 		let key = bcm.key.value_as_bits(&values);
+    // 		println!("K:{:?}",key);
+    // 		println!("Y:{:?}",y);
+    // 		println!("Y[{}]:{}",j_found,y.get(j_found));
+    // 		println!("K[0]:{}",key.get(0));
+    // 	    },
+    // 	    Lbool::False => {
+    // 		println!("Contradiction");
+    // 	    },
+    // 	    _ => ()
+    // 	}
+    // }
+}

@@ -8,6 +8,7 @@ mod register;
 mod machine;
 mod xorwow;
 mod bracket;
+mod utils;
 
 use std::cell::RefCell;
 use xorwow::Xorwow;
@@ -721,7 +722,7 @@ fn main()->Result<(),std::io::Error> {
 		for instance in 0..ninstance {
 		    let mut xw = Xorwow::new(12345678 + instance);
 		    //let n_unknowns = [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16];
-		    let n_unknowns = [128];
+		    let n_unknowns = [128-32];
 		    let key_words = [xw.next(),xw.next(),xw.next(),xw.next()];
 		    let key = Bits::concat(&vec![Bits::new32(key_words[3]),
 						 Bits::new32(key_words[2]),

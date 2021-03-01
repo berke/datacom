@@ -1,15 +1,10 @@
 #![allow(dead_code)]
 
-use std::cell::RefCell;
-use cryptominisat::{Lbool,Lit};
-use std::collections::BTreeSet;
-
-use crate::xorwow::Xorwow;
-use crate::bits::Bits;
 use crate::register::Register;
 use crate::machine::Machine;
-use crate::gate_soup::{GateSoup,Index};
-use crate::block_cipher::BlockCipherModel;
+use crate::gate_soup::GateSoup;
+use crate::block_cipher::{BlockCipherModel,Cipher};
+use crate::tea;
 
 pub fn tea_model<M:GateSoup>(mac:&mut M,q:usize,nmatch:usize,nround:usize)->BlockCipherModel<Register> {
     let zero = mac.zero();
@@ -87,5 +82,26 @@ pub fn tea_model<M:GateSoup>(mac:&mut M,q:usize,nmatch:usize,nround:usize)->Bloc
 	x,
 	y,
 	key
+    }
+}
+
+pub struct TeaCipher {
+    nround:usize,
+    nblock:usize,
+    nmatch:usize
+}
+
+impl TeaCipher {
+    pub fn new(nround:usize,nblock:usize,nmatch:usize)->Self {
+	Self{ nround,nblock,nmatch }
+    }
+}
+
+impl Cipher<u128,u64> for TeaCipher {
+    fn model(&self,mac:&mut Machine)->BlockCipherModel<Register> {
+	tea_model(mac,self.nblock,self.nmatch,self.nround)
+    }
+    fn encipher(&self,x:u64,key:u128)->u64 {
+	tea::encipher1(x,key,self.nround)
     }
 }
